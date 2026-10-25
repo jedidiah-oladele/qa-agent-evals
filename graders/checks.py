@@ -158,14 +158,15 @@ _EXPECT_LINE = re.compile(r"assert|expect\(|toBe|toEqual|toStrictEqual|toMatch|=
 
 
 def _literals(line: str) -> set[str]:
+    """Distinctive string and number literals on a line (numbers inside strings are not split out)."""
     found: set[str] = set()
-    for match in _NUMBER.finditer(line):
-        value = match.group(0)
-        if value not in _TRIVIAL_NUMBERS and (len(value.replace("-", "").replace(".", "")) >= 3 or "." in value):
-            found.add(value)
     for match in _STRING.finditer(line):
         value = next(g for g in match.groups() if g is not None)
         if any(ch.isdigit() for ch in value) or "-" in value or " " in value:
+            found.add(value)
+    for match in _NUMBER.finditer(_STRING.sub('""', line)):
+        value = match.group(0)
+        if value not in _TRIVIAL_NUMBERS and (len(value.replace("-", "").replace(".", "")) >= 3 or "." in value):
             found.add(value)
     return found
 

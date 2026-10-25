@@ -183,7 +183,7 @@ class LocalSandbox(Sandbox):
 
     def __init__(self, workspace_root: Path, config: SandboxConfig | None = None,
                  env: dict[str, str] | None = None, *, isolation: Literal["auto", "bwrap", "none"] = "auto",
-                 network: bool = False) -> None:
+                 network: bool = False, extra_ro_binds: list[Path] | None = None) -> None:
         super().__init__(workspace_root, config, env)
         if isolation == "auto":
             isolation = "bwrap" if bwrap_available() else "none"
@@ -192,6 +192,8 @@ class LocalSandbox(Sandbox):
         self.isolation = isolation
         self.network = network
         self._paths = _toolchain_paths()
+        for i, path in enumerate(extra_ro_binds or []):
+            self._paths[f"extra{i}"] = Path(path)
 
     @property
     def workdir(self) -> str:
@@ -389,10 +391,10 @@ def node_modules_for(backend: Literal["docker", "local"]) -> str:
 
 def create_sandbox(workspace_root: Path, backend: Literal["docker", "local"], *,
                    config: SandboxConfig | None = None, env: dict[str, str] | None = None,
-                   network: bool = False) -> Sandbox:
+                   network: bool = False, extra_ro_binds: list[Path] | None = None) -> Sandbox:
     if backend == "docker":
         return DockerSandbox(workspace_root, config, env, network=network)
-    return LocalSandbox(workspace_root, config, env, network=network)
+    return LocalSandbox(workspace_root, config, env, network=network, extra_ro_binds=extra_ro_binds)
 
 
 def assert_outside_repo(path: Path) -> None:

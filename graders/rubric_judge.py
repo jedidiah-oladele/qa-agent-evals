@@ -116,12 +116,15 @@ class FakeJudge:
     Rule: an item passes when the evidence is non-empty and the diff (or written
     artifact) mentions at least one distinctive word from the criterion. The
     ``disagree_rate`` lets a second fake judge disagree on a fixed slice of
-    items so the cross-check agreement code path is exercised.
+    items so the cross-check agreement code path is exercised; ``error_rate``
+    makes it return a malformed reply on a fixed slice so the judge-error
+    path (and grader-error attribution) is exercised.
     """
 
-    def __init__(self, model: str = "fake-judge", disagree_rate: float = 0.0) -> None:
+    def __init__(self, model: str = "fake-judge", disagree_rate: float = 0.0, error_rate: float = 0.0) -> None:
         self.model = model
         self.disagree_rate = disagree_rate
+        self.error_rate = error_rate
 
     def judge(self, system: str, prompt: str) -> tuple[str, Usage]:
         criterion = prompt.split("## Criterion to grade\n", 1)[-1].split("\n## ", 1)[0].lower()
@@ -131,6 +134,10 @@ class FakeJudge:
         has_evidence = "(no changes)" not in evidence
         verdict = "pass" if has_evidence and any(w in evidence for w in words) else "fail"
         digest = int(hashlib.sha256((self.model + prompt).encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+        if digest > 1 - self.error_rate:
+            # Simulates a judge that ignores the output format, so the
+            # unparseable-verdict path (retry, then "error") is exercised.
+            return "[dry-run fake judge: simulated malformed reply]", Usage(len(prompt) // 4, 10)
         if digest < self.disagree_rate:
             verdict = "fail" if verdict == "pass" else "pass"
         reply = json.dumps({"verdict": verdict, "rationale": f"[dry-run fake judge {self.model}: keyword "

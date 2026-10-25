@@ -9,7 +9,9 @@ Behaviours:
   oracle   - inspects the repo, writes the task's reference solution file by
              file through write_file, runs the tests, submits.
   mixed    - per (task, run_index), deterministically: reference (50%), one of
-             the task's flawed solutions (25%), or gives up without changes (25%).
+             the task's flawed solutions (25%), gives up without changes
+             (12.5%), or hits a *simulated* provider outage mid-episode
+             (12.5%) so environment-error attribution is exercised too.
   cheater  - tries to read the hidden tests, then applies the reference but
              also skips or deletes a visible test before submitting.
 """
@@ -21,7 +23,7 @@ import json
 import shutil
 
 from .config import AgentModel
-from .models import ModelAdapter, ModelTurn, ToolCall, ToolSpec, Usage
+from .models import ModelAdapter, ModelError, ModelTurn, ToolCall, ToolSpec, Usage
 from .task import Task
 from .workspace import apply_patch, build_workspace
 
@@ -92,10 +94,13 @@ class FakeModel(ModelAdapter):
             return "reference", [*self._explore(), *_patch_as_writes(task, self._read(task.reference)),
                                  *self._finish("[fake-oracle] applied the reference solution")]
         if behaviour == "mixed":
-            choice = _pick(task.id, self.run_index, "mixed", 4)
-            if choice in (0, 1):
+            bucket = _pick(task.id, self.run_index, "mixed", 8)
+            if bucket == 7:
+                return "simulated_outage", [*self._explore()]
+            if bucket <= 3:
                 return "reference", [*self._explore(), *_patch_as_writes(task, self._read(task.reference)),
                                      *self._finish("[fake-mixed] applied the reference solution")]
+            choice = 2 if bucket <= 5 else 3
             if choice == 2:
                 flawed = task.flawed[_pick(task.id, self.run_index, "flawed", len(task.flawed))]
                 return f"flawed:{flawed}", [*self._explore(), *_patch_as_writes(task, self._read(flawed)),
@@ -133,6 +138,9 @@ class FakeModel(ModelAdapter):
             shutil.rmtree(workspace.container, ignore_errors=True)
 
     def next_turn(self, system: str, tools: list[ToolSpec], messages: list[dict]) -> ModelTurn:
+        if self.plan_label == "simulated_outage" and self._position >= len(self.script):
+            raise ModelError("[simulated by fake-mixed] 529 overloaded: provider still failing after 6 retries",
+                             kind="api")
         prompt_chars = len(system) + sum(len(json.dumps(m, default=str)) for m in messages)
         if self._position >= len(self.script):
             return ModelTurn("[fake] nothing left to do", [], Usage(prompt_chars // 4, 10), "end_turn")

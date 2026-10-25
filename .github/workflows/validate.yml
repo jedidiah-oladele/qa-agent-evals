@@ -1,0 +1,47 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: target/ledgerkit/package-lock.json
+      - name: Allow unprivileged user namespaces (bubblewrap sandbox)
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - run: make setup
+      - run: make test
+      - run: make validate ARGS="--workers 2"
+      - name: Dry run on a task subset (fake models, no keys)
+        run: make dry-run TASKS="bf_001 pr_016" ARGS="--k 1 --out /tmp/ci-dry.jsonl"
+
+  docker-sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: make setup
+      - run: make docker-image
+      - name: Docker-backend sandbox tests
+        run: uv run pytest tests/test_sandbox.py -m docker -v
+      - name: Validate two tasks on the Docker backend
+        run: uv run python -m validation.validate_tasks bf_001 pr_016 --backend docker --workers 1
