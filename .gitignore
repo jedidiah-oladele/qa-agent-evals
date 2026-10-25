@@ -1,0 +1,39 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# node
+node_modules/
+*.tsbuildinfo
+coverage/
+
+# rebuilt target histories and scratch space (see target/README.md)
+.history/
+.scratch/
+.cache/
+results/.tmp/
+
+# large binaries
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.bundle
+*.bin
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
