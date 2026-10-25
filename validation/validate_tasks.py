@@ -296,7 +296,13 @@ def _validate(task: Task, backend: str, report: TaskReport) -> None:
     if task.primary.type == "hidden_tests":
         details = baseline.primary.details
         passing_f2p = [t for t, o in details["fail_to_pass"].items() if o == "passed"]
-        missing = [t for t, o in details["fail_to_pass"].items() if o == "missing"]
+        # A fail_to_pass test may be absent at the start only because its file
+        # cannot even be imported there (the feature does not exist yet).
+        broken = set(details["suite"].get("collection_errors", []))
+        missing = [
+            t for t, o in details["fail_to_pass"].items()
+            if o == "missing" and t.split("::")[0].split(" > ")[0] not in broken
+        ]
         if passing_f2p:
             report.fail(f"fail_to_pass tests already pass at the start: {passing_f2p}")
         if missing:

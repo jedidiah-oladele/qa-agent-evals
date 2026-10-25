@@ -29,6 +29,7 @@ class TestReport:
     output_tail: str = ""
     duration_s: float = 0.0
     runner_error: str | None = None
+    infra_retry: str | None = None
 
     def passed(self, test_id: str) -> bool:
         return self.outcomes.get(test_id) in PASSING
@@ -57,6 +58,7 @@ class TestReport:
             "timed_out": self.timed_out,
             "runner_error": self.runner_error,
             "exit_code": self.exit_code,
+            "infra_retry": self.infra_retry,
         }
 
 
@@ -80,7 +82,12 @@ def run_pytest(
 ) -> TestReport:
     report_path = _prepare(sandbox.workspace_root)
     targets = " ".join(shlex.quote(p) for p in (paths or []))
-    command = (f"python -m pytest -p qa_report -p no:cacheprovider -q -o addopts='' --tb=short -rN {targets}").strip()
+    # --continue-on-collection-errors: one test file failing to import (e.g. a PR's
+    # tests importing a class the starting state lacks) must not hide the rest.
+    command = (
+        "python -m pytest -p qa_report -p no:cacheprovider -q -o addopts='' "
+        f"--continue-on-collection-errors --tb=short -rN {targets}"
+    ).strip()
     run_env = {"PYTHONPATH": f"{GRADER_DIR}", "QA_REPORT_PATH": f"{GRADER_DIR}/report.json", **(env or {})}
     if shuffle_seed is not None:
         run_env["QA_SHUFFLE_SEED"] = str(shuffle_seed)
@@ -173,5 +180,17 @@ def run_vitest(
 
 
 def run_tests(sandbox: Sandbox, language: str, **kwargs) -> TestReport:
+    """Run the suite; if the runner died without producing any report, try once more.
+
+    A run with no outcomes, no failing test, no collection error and no
+    timeout is an infrastructure failure (e.g. the runner was killed under
+    memory pressure), not a test result, so it is retried exactly once and the
+    retry is recorded. Real test failures are never retried.
+    """
     runner = run_pytest if language == "python" else run_vitest
-    return runner(sandbox, **kwargs)
+    report = runner(sandbox, **kwargs)
+    if report.runner_error and not report.outcomes and not report.collection_errors and not report.timed_out:
+        first_error = report.runner_error
+        report = runner(sandbox, **kwargs)
+        report.infra_retry = first_error
+    return report

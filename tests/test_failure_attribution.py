@@ -64,9 +64,18 @@ def test_agent_errors_have_specific_reasons():
     a = attribute(cheat, invalid=frozenset())
     assert a.label == "agent" and "no_skip_or_xfail" in a.evidence
     flaky = record(
-        primary={"type": "repeated_runs", "details": {"runs": 20, "failed_runs": 3, "failures": [{"failing": ["t"]}]}}
+        primary={
+            "type": "repeated_runs",
+            "details": {
+                "runs_required": 20,
+                "runs": 4,
+                "failed_runs": 1,
+                "first_failing_run": 3,
+                "failures": [{"failing": ["t"]}],
+            },
+        }
     )
-    assert "3/20" in attribute(flaky, invalid=frozenset()).evidence
+    assert "run 3 of 20" in attribute(flaky, invalid=frozenset()).evidence
     review = record(primary={"type": "review_findings", "details": {"missed": ["leak"], "false_positives": []}})
     assert attribute(review, invalid=frozenset()).reason == "review missed seeded defects"
 

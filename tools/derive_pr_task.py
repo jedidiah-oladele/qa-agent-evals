@@ -57,7 +57,11 @@ def _diff_dirs(before: Path, after: Path, paths: list[str]) -> str:
         text = result.stdout
         if not text:
             continue
-        text = text.replace(f"a{a}", f"a/{relative}").replace(f"b{b}", f"b/{relative}")
+        # git prints both header paths from whichever side exists, so map both
+        # temporary roots back to the library-relative path on each side.
+        for side in ("a", "b"):
+            for tmp in (a, b):
+                text = text.replace(f"{side}{tmp}", f"{side}/{relative}")
         text = text.replace(str(a), relative).replace(str(b), relative)
         chunks.append(text)
     return "".join(chunks)

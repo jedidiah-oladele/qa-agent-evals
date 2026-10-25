@@ -4,6 +4,7 @@
 * ``mutation``      - the agent's tests pass on clean code and kill enough hidden mutants.
 * ``repeated_runs`` - the whole suite (plus hidden tests) passes N times with
                       shuffled order, varying random seeds, hash seeds and time zones.
+                      Grading stops at the first failing run (the verdict cannot change).
 * ``review_findings`` - every seeded defect is located in REVIEW.md, with a
                       bounded number of findings that match no seeded defect.
 
@@ -158,11 +159,23 @@ def grade_repeated_runs(ctx: GradeContext) -> PrimaryResult:
                     "failing": report.failing[:5],
                     "collection_errors": sorted(report.collection_errors)[:3],
                     "tests": len(report.outcomes),
+                    "runner_error": report.runner_error,
+                    "infra_retry": report.infra_retry,
                 }
             )
+            if not report.all_green:
+                # The verdict is already "fail"; the remaining runs cannot change it.
+                break
     failed = [r for r in runs if not r["green"]]
-    details = {"runs": len(runs), "failed_runs": len(failed), "failures": failed[:8]}
-    return PrimaryResult(bool(runs) and not failed, "repeated_runs", details)
+    details = {
+        "runs_required": primary.runs,
+        "runs": len(runs),
+        "failed_runs": len(failed),
+        "first_failing_run": failed[0]["run"] if failed else None,
+        "failures": failed[:8],
+        "stopped_early": bool(failed) and len(runs) < (primary.runs or 0),
+    }
+    return PrimaryResult(bool(runs) and not failed and len(runs) == primary.runs, "repeated_runs", details)
 
 
 def grade_review_findings(ctx: GradeContext) -> PrimaryResult:

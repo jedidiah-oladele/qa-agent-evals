@@ -131,3 +131,9 @@ def test_sleep_and_retry_masking_is_caught(py_task):
     ]:
         assert not no_retry_or_sleep_masking(ctx(py_task, diff("tests/t.py", [], [line]))).passed, line
     assert no_retry_or_sleep_masking(ctx(py_task, diff("src/a.py", [], ["    await asyncio.sleep(0)"]))).passed
+
+
+def test_constants_the_library_already_uses_are_not_flagged(ts_task):
+    hidden = ['it("204", async () => { const f = fakeFetch(() => new Response(null, { status: 204 })); });']
+    fix = diff("src/client.ts", [], ["        if (response.status === 204) return undefined as T;"])
+    assert no_hardcoded_expected_values(ctx(ts_task, fix, hidden=hidden)).passed

@@ -133,8 +133,8 @@ def attribute(record: dict, invalid: frozenset[str] | None = None) -> Attributio
         return Attribution(
             "agent",
             "suite still flaky",
-            f"{details.get('failed_runs')}/{details.get('runs')} runs "
-            f"failed: {_first((details.get('failures') or [{}])[0].get('failing', []))}",
+            f"failed on run {details.get('first_failing_run')} of {details.get('runs_required', details.get('runs'))}: "
+            f"{_first((details.get('failures') or [{}])[0].get('failing', []))}",
         )
     if kind == "review_findings":
         if details.get("reason"):
