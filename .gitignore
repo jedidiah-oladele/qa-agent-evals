@@ -38,3 +38,6 @@ results/.tmp/
 .idea/
 .vscode/
 build/
+
+# raw episode logs (bulky; regenerate with make dry-run / make run)
+results/runs/
