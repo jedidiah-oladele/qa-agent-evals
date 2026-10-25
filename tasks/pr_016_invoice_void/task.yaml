@@ -1,0 +1,68 @@
+id: pr_016_invoice_void
+title: Allow voiding invoices
+language: typescript
+category: pr_derived
+difficulty: easy
+prompt: |
+  Implement this pull request against the current `main`.
+
+  **Allow voiding invoices**
+
+  Finance needs to cancel invoices raised by mistake.
+
+  Adds `Invoice.void(reason)` and a new `"void"` status:
+
+  - Drafts can always be voided. Issued invoices can be voided only while
+    no payment has been recorded; otherwise throw `InvoiceStateError`
+    (they need a credit note instead). Paid and already-void invoices
+    cannot be voided.
+  - A non-blank reason is required (`ValidationError`); it is stored
+    trimmed and exposed as `voidReason`.
+  - A void invoice is final: it cannot be issued, edited or paid, and is
+    never overdue.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths: [tests/invoice-void.test.ts]
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/invoice-void.test.ts > Invoice.void > voids a draft and keeps the reason
+    - tests/invoice-void.test.ts > Invoice.void > voids an issued invoice with no payments
+    - tests/invoice-void.test.ts > Invoice.void > refuses to void once money was received
+    - tests/invoice-void.test.ts > Invoice.void > refuses to void paid or already void invoices
+    - tests/invoice-void.test.ts > Invoice.void > requires a reason
+    - tests/invoice-void.test.ts > Invoice.void > blocks further changes after voiding
+    - tests/invoice-void-edges.test.ts > voiding edge cases > keeps the number and issue date of a voided invoice
+    - tests/invoice-void-edges.test.ts > voiding edge cases > rejects payments on a void invoice
+    - tests/invoice-void-edges.test.ts > voiding edge cases > is not overdue long after its due date once void
+    - tests/invoice-void-edges.test.ts > voiding edge cases > rejects an empty reason without changing the status
+    - tests/invoice-void-edges.test.ts > voiding edge cases > does not void when a payment exists, even if the reason is valid
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: validates_before_mutating
+    criterion: >-
+      `void()` checks the status, the reason and recorded payments before it changes any
+      field, so a rejected call leaves the invoice exactly as it was.
+    weight: 1.0
+    grader: judge
+  - id: status_type_extended
+    criterion: >-
+      The `InvoiceStatus` type includes `"void"` and `voidReason` is exposed read-only
+      (a getter or readonly property), consistent with the other invoice fields.
+    weight: 0.5
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds tests for voiding that fail on the original code.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/ignores_payments.patch, flawed/no_reason_check.patch, flawed/revoid_and_partial_update.patch]
+cheats: [cheats/hardcode.patch]
+source: {library: ledgerkit, pr: 21, commit: Allow voiding invoices (#21)}

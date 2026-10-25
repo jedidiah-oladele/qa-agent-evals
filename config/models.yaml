@@ -1,0 +1,76 @@
+# Every model ID used anywhere in this repository is defined in this file.
+# Code reads IDs from here; nothing else hard-codes a model name.
+#
+# Prices are USD per million tokens, copied on 2026-10-25 from
+#   - Anthropic: platform pricing (Claude Opus 5.5, Claude Sonnet 5.5)
+#   - OpenAI: https://developers.openai.com/api/docs/pricing (standard tier, <=272K context)
+# Re-check both pages before a paid run; cost_usd in results is computed from
+# the token counts each API reports, multiplied by these numbers.
+
+agents:
+  - key: claude-opus-5-5
+    provider: anthropic
+    model_id: claude-opus-5-5
+    # Opus 5.5 defaults to effort "medium"; pin it so runs are comparable over time.
+    effort: high
+    max_output_tokens: 16000
+    pricing: {input: 4.00, output: 20.00, cache_read: 0.20, cache_write: 5.00}
+
+  - key: claude-sonnet-5-5
+    provider: anthropic
+    model_id: claude-sonnet-5-5
+    effort: high
+    max_output_tokens: 16000
+    pricing: {input: 2.00, output: 10.00, cache_read: 0.20, cache_write: 2.50}
+
+  - key: gpt-6-astra
+    provider: openai
+    model_id: gpt-6-astra
+    effort: high
+    max_output_tokens: 16000
+    pricing: {input: 10.00, output: 50.00, cache_read: 1.00, cache_write: 0.00}
+
+# Vendor coding-agent CLIs run headless in the same sandbox and task set.
+# Each is skipped (and recorded as skipped) when its CLI is not installed.
+native_harnesses:
+  - key: claude-code/claude-opus-5-5
+    adapter: claude_code
+    cli: claude
+    model_key: claude-opus-5-5
+  - key: codex-cli/gpt-6-astra
+    adapter: codex_cli
+    cli: codex
+    model_key: gpt-6-astra
+
+judge:
+  primary:
+    provider: openai
+    model_id: gpt-6.1-sol
+    max_output_tokens: 2000
+    pricing: {input: 2.00, output: 10.00, cache_read: 0.10, cache_write: 0.00}
+  cross_check:
+    provider: anthropic
+    model_id: claude-sonnet-5-5
+    max_output_tokens: 2000
+    sample_rate: 0.20
+    pricing: {input: 2.00, output: 10.00, cache_read: 0.20, cache_write: 2.50}
+
+# Scripted fake models for --dry-run. They make no network calls and cost
+# nothing. Their output is pipeline test data, NOT model results.
+fake_agents:
+  - key: fake-oracle
+    provider: fake
+    model_id: fake-oracle
+    behaviour: oracle        # replays the task's reference solution through the tools
+  - key: fake-mixed
+    provider: fake
+    model_id: fake-mixed
+    behaviour: mixed         # per run, deterministically picks reference, a flawed patch or giving up
+  - key: fake-cheater
+    provider: fake
+    model_id: fake-cheater
+    behaviour: cheater       # tries to read hidden tests, then skips/deletes tests
+
+fake_judges:
+  primary: {provider: fake, model_id: fake-judge}
+  cross_check: {provider: fake, model_id: fake-judge-b, sample_rate: 0.20}

@@ -13,7 +13,6 @@ dependencies = [
     "openai>=1.50",
     "matplotlib>=3.9",
     "pytest>=8.3",
-    "pytest-randomly>=3.15",
 ]
 
 [dependency-groups]
@@ -24,7 +23,7 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q -p no:randomly"
+addopts = "-q"
 markers = [
     "docker: needs a running Docker daemon (skipped otherwise)",
     "slow: runs real target test suites",

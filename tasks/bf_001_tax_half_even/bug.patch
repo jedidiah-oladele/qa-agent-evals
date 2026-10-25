@@ -1,0 +1,36 @@
+diff --git a/src/shopcore/tax.py b/src/shopcore/tax.py
+index 409e2fe..14246d0 100644
+--- a/src/shopcore/tax.py
++++ b/src/shopcore/tax.py
+@@ -13,7 +13,7 @@ from decimal import Decimal
+ from enum import StrEnum
+ 
+ from .errors import TaxConfigError
+-from .money import Money, round_half_up
++from .money import Money, minor_unit
+ 
+ 
+ class TaxRounding(StrEnum):
+@@ -129,7 +129,8 @@ def compute_taxes(
+     currency = nets[0].currency
+     raw = [unrounded_tax(net, rate, inclusive=inclusive) for net, rate in zip(nets, rates)]
+     if rounding is TaxRounding.PER_LINE:
+-        return [Money(round_half_up(r, currency), currency) for r in raw]
++        unit = minor_unit(currency)
++        return [Money(r.quantize(unit), currency) for r in raw]
+     total = Money(sum(raw, Decimal(0)), currency)
+     if total.is_zero() or sum(raw, Decimal(0)) <= 0:
+         return [Money.zero(currency) for _ in nets]
+diff --git a/tests/test_tax.py b/tests/test_tax.py
+index 2347ae6..d0fc529 100644
+--- a/tests/test_tax.py
++++ b/tests/test_tax.py
+@@ -65,7 +65,7 @@ def test_per_order_rounding_rounds_once_and_spreads():
+ 
+ 
+ def test_per_order_rounding_differs_from_per_line():
+-    nets = [usd("0.05")] * 3
++    nets = [usd("0.06")] * 3
+     per_line = compute_taxes(nets, [Decimal("0.10")] * 3)
+     per_order = compute_taxes(nets, [Decimal("0.10")] * 3, rounding=TaxRounding.PER_ORDER)
+     assert sum(t.amount for t in per_line) == Decimal("0.03")

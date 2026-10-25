@@ -1,0 +1,25 @@
+diff --git a/src/shopcore/tax.py b/src/shopcore/tax.py
+index 14246d0..ea1bb2e 100644
+--- a/src/shopcore/tax.py
++++ b/src/shopcore/tax.py
+@@ -13,7 +13,9 @@ from decimal import Decimal
+ from enum import StrEnum
+ 
+ from .errors import TaxConfigError
+-from .money import Money, minor_unit
++from decimal import ROUND_HALF_UP
++
++from .money import Money
+ 
+ 
+ class TaxRounding(StrEnum):
+@@ -129,8 +131,7 @@ def compute_taxes(
+     currency = nets[0].currency
+     raw = [unrounded_tax(net, rate, inclusive=inclusive) for net, rate in zip(nets, rates)]
+     if rounding is TaxRounding.PER_LINE:
+-        unit = minor_unit(currency)
+-        return [Money(r.quantize(unit), currency) for r in raw]
++        return [Money(r.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), currency) for r in raw]
+     total = Money(sum(raw, Decimal(0)), currency)
+     if total.is_zero() or sum(raw, Decimal(0)) <= 0:
+         return [Money.zero(currency) for _ in nets]

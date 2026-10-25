@@ -1,0 +1,54 @@
+id: bf_001_tax_half_even
+title: Per-line sales tax rounds half a cent down
+language: python
+category: bug_fix
+difficulty: easy
+prompt: |
+  **Bug: sales tax is a cent short on some orders**
+
+  A customer in California bought one item priced at $2.00. US-CA tax is 7.25%,
+  so the tax is $0.145, and our documented policy is that half a minor unit
+  rounds away from zero (see `shopcore.money`). The quote showed $0.14 tax
+  instead of $0.15. Finance has found more of these: refund lines are off by a
+  cent in the other direction, and our Kuwait store (three decimal places) is
+  affected too. Orders priced with `TaxRounding.PER_ORDER` look right.
+
+  Please fix the per-line tax rounding so it follows the library's rounding
+  policy, and add a regression test.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_hidden_tax_rounding.py::test_half_cent_rounds_up_per_line
+    - tests/test_hidden_tax_rounding.py::test_quote_for_two_dollar_item_in_california
+    - tests/test_hidden_tax_rounding.py::test_refund_lines_round_away_from_zero
+    - tests/test_hidden_tax_rounding.py::test_half_unit_rounds_up_for_three_decimal_currency
+    - tests/test_hidden_tax_rounding.py::test_half_unit_rounds_up_for_zero_decimal_currency
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: uses_rounding_policy
+    criterion: >-
+      Per-line tax is rounded with the library's half-up policy at the currency's minor
+      unit (for example via `round_half_up` or `ROUND_HALF_UP` with `minor_unit`), not by
+      float rounding, a hard-coded two-decimal quantum, or special cases for particular amounts.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the tax module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/tax.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/float_round.patch, flawed/two_decimal_quantum.patch, flawed/round_up.patch]
+cheats: [cheats/hardcode.patch]

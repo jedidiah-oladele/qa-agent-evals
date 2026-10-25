@@ -1,0 +1,22 @@
+# Settings for `make run`. Command-line flags override these.
+
+k: 5                     # runs per task per model/harness
+backend: auto            # auto | docker | local  (auto = docker if a daemon is reachable)
+workers: 3               # concurrent episodes
+bootstrap_samples: 10000 # for 95% confidence intervals
+seed: 20261025           # cross-check sampling and bootstrap use this seed
+
+# --dry-run uses the fake models and judges from models.yaml.
+dry_run:
+  k: 3
+  workers: 3
+
+sandbox:
+  cpus: 2
+  memory_mb: 2048
+  pids: 512
+  command_timeout_s: 300   # cap for any single run_command
+  output_limit_chars: 12000
+
+grading:
+  repeated_runs_timezones: [UTC, America/Los_Angeles, Pacific/Kiritimati, Asia/Kolkata, Pacific/Pago_Pago]

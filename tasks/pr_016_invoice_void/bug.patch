@@ -1,0 +1,53 @@
+diff --git a/src/invoice.ts b/src/invoice.ts
+index 7225493..8e08594 100644
+--- a/src/invoice.ts
++++ b/src/invoice.ts
+@@ -2,7 +2,7 @@ import { CurrencyMismatchError, InvoiceStateError, ValidationError } from "./err
+ import { type ISODate, addDays, compareDates } from "./dates";
+ import { type Money, add, multiply, subtract, sum, zero } from "./money";
+ 
+-export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
++export type InvoiceStatus = "draft" | "issued" | "paid";
+ 
+ export interface InvoiceLine {
+   readonly description: string;
+@@ -30,7 +30,6 @@ export class Invoice {
+   private _status: InvoiceStatus = "draft";
+   private _number: string | undefined;
+   private _issuedOn: ISODate | undefined;
+-  private _voidReason: string | undefined;
+   readonly netDays: number;
+ 
+   constructor(
+@@ -56,9 +55,6 @@ export class Invoice {
+   get dueOn(): ISODate | undefined {
+     return this._issuedOn === undefined ? undefined : addDays(this._issuedOn, this.netDays);
+   }
+-  get voidReason(): string | undefined {
+-    return this._voidReason;
+-  }
+   get lines(): readonly InvoiceLine[] {
+     return this._lines;
+   }
+@@ -177,21 +173,4 @@ export class Invoice {
+     const due = this.dueOn;
+     return this._status === "issued" && due !== undefined && compareDates(today, due) > 0;
+   }
+-
+-  /**
+-   * Cancel the invoice. Drafts can always be voided; issued invoices only
+-   * while nothing has been paid against them. A reason is required for the
+-   * audit trail.
+-   */
+-  void(reason: string): void {
+-    this.requireStatus("draft", "issued");
+-    if (!reason.trim()) {
+-      throw new ValidationError("a reason is required to void an invoice");
+-    }
+-    if (this._payments.length > 0) {
+-      throw new InvoiceStateError("cannot void an invoice with payments; issue a credit note instead");
+-    }
+-    this._voidReason = reason.trim();
+-    this._status = "void";
+-  }
+ }
