@@ -58,8 +58,7 @@ def git_commit() -> str:
     return result.stdout.strip() or "unknown"
 
 
-def participants(config: ModelsConfig, *, dry_run: bool, models: list[str] | None,
-                 harnesses: str) -> list[Participant]:
+def participants(config: ModelsConfig, *, dry_run: bool, models: list[str] | None, harnesses: str) -> list[Participant]:
     chosen: list[Participant] = []
     agents = config.fake_agents if dry_run else config.agents
     if harnesses in ("shared", "all"):
@@ -79,12 +78,23 @@ def judges_for(config: ModelsConfig, run_cfg: RunConfig, *, dry_run: bool, skip:
         return None
     if dry_run:
         spec = config.fake_judges
-        return JudgeSetup(FakeJudge(spec.primary.model_id, error_rate=0.03), None,
-                          FakeJudge(spec.cross_check.model_id, disagree_rate=0.12), None,
-                          spec.cross_check.sample_rate or 0.0, run_cfg.seed)
+        return JudgeSetup(
+            FakeJudge(spec.primary.model_id, error_rate=0.03),
+            None,
+            FakeJudge(spec.cross_check.model_id, disagree_rate=0.12),
+            None,
+            spec.cross_check.sample_rate or 0.0,
+            run_cfg.seed,
+        )
     spec = config.judge
-    return JudgeSetup(LLMJudge(spec.primary), spec.primary.pricing, LLMJudge(spec.cross_check),
-                      spec.cross_check.pricing, spec.cross_check.sample_rate or 0.0, run_cfg.seed)
+    return JudgeSetup(
+        LLMJudge(spec.primary),
+        spec.primary.pricing,
+        LLMJudge(spec.cross_check),
+        spec.cross_check.pricing,
+        spec.cross_check.sample_rate or 0.0,
+        run_cfg.seed,
+    )
 
 
 def _compact_trajectory(trajectory: list[dict]) -> list[dict]:
@@ -121,8 +131,17 @@ def base_record(run_id: str, p: Participant, task: Task, run_index: int, dry_run
     }
 
 
-def run_one(run_id: str, p: Participant, task: Task, run_index: int, *, backend: str, run_cfg: RunConfig,
-            judges: JudgeSetup | None, dry_run: bool) -> dict:
+def run_one(
+    run_id: str,
+    p: Participant,
+    task: Task,
+    run_index: int,
+    *,
+    backend: str,
+    run_cfg: RunConfig,
+    judges: JudgeSetup | None,
+    dry_run: bool,
+) -> dict:
     record = base_record(run_id, p, task, run_index, dry_run)
     record.update(status="ok", error=None, error_kind=None)
     started = time.monotonic()
@@ -139,8 +158,9 @@ def run_one(run_id: str, p: Participant, task: Task, run_index: int, *, backend:
             from pathlib import Path as _P
 
             binds = [_P(adapter.cli_path).resolve().parent.parent] if adapter.cli_path else []
-            with create_sandbox(workspace.root, backend, config=run_cfg.sandbox, env=task.env, network=True,
-                                extra_ro_binds=binds) as sandbox:
+            with create_sandbox(
+                workspace.root, backend, config=run_cfg.sandbox, env=task.env, network=True, extra_ro_binds=binds
+            ) as sandbox:
                 record["sandbox"]["isolation"] = sandbox.isolation
                 record["sandbox"]["network"] = "vendor-api"
                 result = adapter.run(task, sandbox, os.environ.get(adapter.key_env, ""))
@@ -160,17 +180,26 @@ def run_one(run_id: str, p: Participant, task: Task, run_index: int, *, backend:
             steps, usage, trajectory = episode.steps, episode.usage, episode.trajectory
             stop_reason, agent_error = episode.stop_reason, episode.error
             if episode.error_kind:
-                record["error_kind"] = "environment" if episode.error_kind in (
-                    "api", "rate_limit", "auth", "missing_key") else "agent"
+                record["error_kind"] = (
+                    "environment" if episode.error_kind in ("api", "rate_limit", "auth", "missing_key") else "agent"
+                )
             agent_cost = cost_usd(usage, p.model.pricing)
             wall = episode.wall_time_s
             submit_summary = episode.submit_summary
         diff = workspace.diff()
-        artifacts = {name: text for name in ("TRIAGE.md", "REVIEW.md")
-                     if (text := workspace.read_text(name)) is not None}
-        grade: GradeResult = grade_submission(task, diff, trajectory, backend=backend, judges=judges,
-                                              artifacts=artifacts, config=run_cfg,
-                                              key=(task.id, p.key, run_index))
+        artifacts = {
+            name: text for name in ("TRIAGE.md", "REVIEW.md") if (text := workspace.read_text(name)) is not None
+        }
+        grade: GradeResult = grade_submission(
+            task,
+            diff,
+            trajectory,
+            backend=backend,
+            judges=judges,
+            artifacts=artifacts,
+            config=run_cfg,
+            key=(task.id, p.key, run_index),
+        )
         record.update(grade.to_dict())
         record.update(
             stop_reason=stop_reason,
@@ -189,13 +218,33 @@ def run_one(run_id: str, p: Participant, task: Task, run_index: int, *, backend:
         if agent_error and record.get("error_kind") is None:
             record["error_kind"] = "agent"
     except (SandboxError, PatchError, ModelError, OSError) as exc:
-        record.update(status="error", error=f"{type(exc).__name__}: {exc}"[:1000], error_kind="environment",
-                      primary_pass=0, task_score=0.0, rubric=[], negative_checks=[], steps=0,
-                      wall_time_s=round(time.monotonic() - started, 2), cost_usd=None, diff="")
+        record.update(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}"[:1000],
+            error_kind="environment",
+            primary_pass=0,
+            task_score=0.0,
+            rubric=[],
+            negative_checks=[],
+            steps=0,
+            wall_time_s=round(time.monotonic() - started, 2),
+            cost_usd=None,
+            diff="",
+        )
     except Exception as exc:  # a harness bug: record it, keep the matrix going
-        record.update(status="error", error=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()[-1200:]}",
-                      error_kind="harness", primary_pass=0, task_score=0.0, rubric=[], negative_checks=[],
-                      steps=0, wall_time_s=round(time.monotonic() - started, 2), cost_usd=None, diff="")
+        record.update(
+            status="error",
+            error=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()[-1200:]}",
+            error_kind="harness",
+            primary_pass=0,
+            task_score=0.0,
+            rubric=[],
+            negative_checks=[],
+            steps=0,
+            wall_time_s=round(time.monotonic() - started, 2),
+            cost_usd=None,
+            diff="",
+        )
     finally:
         if workspace is not None:
             workspace.cleanup()
@@ -213,10 +262,14 @@ def done_keys(path: Path) -> set[tuple]:
 
 
 def confirm_spend(n_episodes: int, plist: list[Participant], tasks: list[Task], k: int) -> bool:
-    print(f"\nREAL RUN: {n_episodes} episodes ({len(plist)} model/harness x {len(tasks)} tasks x k={k}), "
-          "plus judge calls on every judge rubric item.")
-    print("This spends money on the Anthropic and OpenAI APIs. Estimate first with:\n"
-          "  uv run python -m tools.estimate_cost --smoke <a smoke-run jsonl>\n")
+    print(
+        f"\nREAL RUN: {n_episodes} episodes ({len(plist)} model/harness x {len(tasks)} tasks x k={k}), "
+        "plus judge calls on every judge rubric item."
+    )
+    print(
+        "This spends money on the Anthropic and OpenAI APIs. Estimate first with:\n"
+        "  uv run python -m tools.estimate_cost --smoke <a smoke-run jsonl>\n"
+    )
     if not sys.stdin.isatty():
         print("Refusing to start a paid run without --yes in a non-interactive shell.")
         return False
@@ -250,34 +303,51 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if not dry:
-        needed = {p.model.provider for p in plist} | ({config.judge.primary.provider, config.judge.cross_check.provider}
-                                                       if not args.skip_judge else set())
+        needed = {p.model.provider for p in plist} | (
+            {config.judge.primary.provider, config.judge.cross_check.provider} if not args.skip_judge else set()
+        )
         missing = [KEY_ENV[p] for p in needed if p in KEY_ENV and not os.environ.get(KEY_ENV[p])]
         if missing:
             print(f"missing API keys: {', '.join(missing)} (see .env.example); use --dry-run to run without keys")
             return 2
 
-    run_id = (args.resume.stem if args.resume else
-              f"{'dryrun' if dry else 'run'}-{dt.datetime.now(dt.UTC).strftime('%Y%m%dT%H%M%SZ')}")
+    run_id = (
+        args.resume.stem
+        if args.resume
+        else f"{'dryrun' if dry else 'run'}-{dt.datetime.now(dt.UTC).strftime('%Y%m%dT%H%M%SZ')}"
+    )
     out = args.resume or args.out or (RUNS / f"{run_id}.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
     skip = done_keys(out)
-    jobs = [(p, t, i) for p in plist for t in tasks for i in range(k)
-            if (p.key, t.id, i) not in skip and not (p.native and i > 0 and not ADAPTERS[p.native.adapter](
-                p.model.model_id).available())]
+    jobs = [
+        (p, t, i)
+        for p in plist
+        for t in tasks
+        for i in range(k)
+        if (p.key, t.id, i) not in skip
+        and not (p.native and i > 0 and not ADAPTERS[p.native.adapter](p.model.model_id).available())
+    ]
     if not dry and not args.yes and not confirm_spend(len(jobs), plist, tasks, k):
         return 3
 
     judges = judges_for(config, run_cfg, dry_run=dry, skip=args.skip_judge)
     commit = git_commit()
-    print(f"{'DRY RUN (fake models)' if dry else 'REAL RUN'} {run_id}: {len(jobs)} episodes, backend={backend}, "
-          f"workers={workers}, commit={commit} -> {out.relative_to(REPO) if out.is_relative_to(REPO) else out}")
+    print(
+        f"{'DRY RUN (fake models)' if dry else 'REAL RUN'} {run_id}: {len(jobs)} episodes, backend={backend}, "
+        f"workers={workers}, commit={commit} -> {out.relative_to(REPO) if out.is_relative_to(REPO) else out}"
+    )
     lock = threading.Lock()
     started = time.monotonic()
     finished = 0
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool, open(out, "a", encoding="utf-8") as sink:
-        futures = {pool.submit(run_one, run_id, p, t, i, backend=backend, run_cfg=run_cfg, judges=judges,
-                               dry_run=dry): (p, t, i) for p, t, i in jobs}
+        futures = {
+            pool.submit(run_one, run_id, p, t, i, backend=backend, run_cfg=run_cfg, judges=judges, dry_run=dry): (
+                p,
+                t,
+                i,
+            )
+            for p, t, i in jobs
+        }
         for future in as_completed(futures):
             record = future.result()
             record["harness_commit"] = commit
@@ -287,8 +357,11 @@ def main(argv: list[str] | None = None) -> int:
                 finished += 1
             p, t, i = futures[future]
             status = record["status"] if record["status"] != "ok" else f"primary={record.get('primary_pass')}"
-            print(f"[{finished}/{len(jobs)}] {p.key:<24} {t.id:<38} run {i}: {status} "
-                  f"score={record.get('task_score')} ({record.get('wall_time_s')}s)", flush=True)
+            print(
+                f"[{finished}/{len(jobs)}] {p.key:<24} {t.id:<38} run {i}: {status} "
+                f"score={record.get('task_score')} ({record.get('wall_time_s')}s)",
+                flush=True,
+            )
     print(f"done in {time.monotonic() - started:.0f}s -> {out}")
     return 0
 

@@ -12,11 +12,11 @@ import os
 
 import pytest
 
+from harness.models import ToolCall
 from harness.paths import TASKS
 from harness.sandbox import LocalSandbox, bwrap_available, local_node_modules
 from harness.task import discover_tasks
 from harness.tools import ToolExecutor
-from harness.models import ToolCall
 from harness.workspace import build_workspace
 
 TASK_LIST = discover_tasks(TASKS)
@@ -34,7 +34,12 @@ def test_starting_workspace_contains_no_hidden_test_content(task):
         pytest.skip("task has no hidden tests")
     with build_workspace(task, node_modules=local_node_modules()) as ws:
         for path in ws.root.rglob("*"):
-            if path.is_file() and not path.is_symlink() and ".git" not in path.parts and "node_modules" not in path.parts:
+            if (
+                path.is_file()
+                and not path.is_symlink()
+                and ".git" not in path.parts
+                and "node_modules" not in path.parts
+            ):
                 assert _digest(path) not in hidden_digests, f"{path} has the same content as a hidden test"
         # The repository (and so tasks/) is not an ancestor of the workspace.
         assert TASKS.resolve() not in ws.root.resolve().parents
@@ -51,13 +56,16 @@ def _read(executor, path):
     return executor.execute(ToolCall("t", "read_file", {"path": path}))
 
 
-@pytest.mark.parametrize("task,hidden", HIDDEN[:12] or [pytest.param(None, None, marks=pytest.mark.skip)],
-                         ids=lambda x: getattr(x, "id", None) or getattr(x, "name", ""))
+@pytest.mark.parametrize(
+    "task,hidden",
+    HIDDEN[:12] or [pytest.param(None, None, marks=pytest.mark.skip)],
+    ids=lambda x: getattr(x, "id", None) or getattr(x, "name", ""),
+)
 def test_file_tools_refuse_hidden_test_paths(task, hidden, agent_env):
     ws, _, executor = agent_env
     attempts = [
-        str(hidden),                                            # absolute host path
-        os.path.relpath(hidden, ws.root),                       # relative path climbing out with ..
+        str(hidden),  # absolute host path
+        os.path.relpath(hidden, ws.root),  # relative path climbing out with ..
         f"../../{hidden.relative_to(TASKS.parent)}",
         "/work/../" + str(hidden).lstrip("/"),
     ]
@@ -89,8 +97,9 @@ def test_shell_commands_cannot_read_hidden_tests(agent_env, py_task):
     ws, sandbox, _ = agent_env
     assert sandbox.isolation == "bwrap"
     hidden = next(p for p in py_task.hidden_tests_dir.rglob("*.py"))
-    result = sandbox.exec(f"cat {hidden}; ls {TASKS}; find / -name '*hidden*' -path '*tasks*' 2>/dev/null | head",
-                          timeout_s=60)
+    result = sandbox.exec(
+        f"cat {hidden}; ls {TASKS}; find / -name '*hidden*' -path '*tasks*' 2>/dev/null | head", timeout_s=60
+    )
     assert hidden.read_text()[:40] not in result.output
     assert "No such file or directory" in result.output
     # A symlink created inside the sandbox resolves inside the sandbox, where the target does not exist.
@@ -101,6 +110,7 @@ def test_shell_commands_cannot_read_hidden_tests(agent_env, py_task):
 @pytest.mark.skipif(not bwrap_available(), reason="bubblewrap not usable on this host")
 def test_sandbox_has_no_network(agent_env):
     _, sandbox, _ = agent_env
-    result = sandbox.exec("python -c \"import socket; socket.create_connection(('1.1.1.1', 53), timeout=3)\"",
-                          timeout_s=30)
+    result = sandbox.exec(
+        "python -c \"import socket; socket.create_connection(('1.1.1.1', 53), timeout=3)\"", timeout_s=30
+    )
     assert result.exit_code != 0

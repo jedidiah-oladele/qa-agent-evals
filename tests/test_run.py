@@ -3,8 +3,19 @@
 from harness.config import models_config, run_config
 from harness.run import SHARED_HARNESS, Participant, judges_for, participants, run_one
 
-REQUIRED_FIELDS = {"task_id", "model", "run_index", "primary_pass", "rubric", "negative_checks", "steps", "tokens",
-                   "cost_usd", "wall_time_s", "diff"}
+REQUIRED_FIELDS = {
+    "task_id",
+    "model",
+    "run_index",
+    "primary_pass",
+    "rubric",
+    "negative_checks",
+    "steps",
+    "tokens",
+    "cost_usd",
+    "wall_time_s",
+    "diff",
+}
 
 
 def fake(key):
@@ -15,8 +26,9 @@ def fake(key):
 
 def run(task, key, run_index=0):
     judges = judges_for(models_config(), run_config(), dry_run=True, skip=False)
-    return run_one("test", fake(key), task, run_index, backend="local", run_cfg=run_config(), judges=judges,
-                   dry_run=True)
+    return run_one(
+        "test", fake(key), task, run_index, backend="local", run_cfg=run_config(), judges=judges, dry_run=True
+    )
 
 
 def test_oracle_episode_passes_and_record_has_required_fields(py_task):

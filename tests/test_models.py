@@ -35,14 +35,14 @@ class MockAnthropic:
 
 
 def anthropic_response(blocks, stop="tool_use", usage=None):
-    usage = usage or NS(input_tokens=100, output_tokens=50, cache_read_input_tokens=1000,
-                        cache_creation_input_tokens=200)
+    usage = usage or NS(
+        input_tokens=100, output_tokens=50, cache_read_input_tokens=1000, cache_creation_input_tokens=200
+    )
     return NS(id="msg_1", content=blocks, stop_reason=stop, usage=usage, stop_details=None)
 
 
 def spec(provider="anthropic", key="claude-opus-5-5"):
-    return models_config().agent(key) if provider != "test" else AgentModel(key="t", provider="anthropic",
-                                                                             model_id="t")
+    return models_config().agent(key) if provider != "test" else AgentModel(key="t", provider="anthropic", model_id="t")
 
 
 def test_model_ids_come_from_config():
@@ -73,14 +73,22 @@ def test_anthropic_request_and_parse():
 
 
 def test_anthropic_replays_assistant_payload_and_groups_tool_results():
-    payload = [{"type": "thinking", "thinking": "", "signature": "s"},
-               {"type": "tool_use", "id": "a", "name": "list_files", "input": {}},
-               {"type": "tool_use", "id": "b", "name": "read_file", "input": {"path": "x"}}]
-    messages = [{"role": "user", "content": "task"},
-                {"role": "assistant", "text": "", "tool_calls": [], "payload": payload},
-                {"role": "tool_results", "results": [{"id": "a", "name": "list_files", "content": "x"},
-                                                     {"id": "b", "name": "read_file", "content": "y",
-                                                      "is_error": True}]}]
+    payload = [
+        {"type": "thinking", "thinking": "", "signature": "s"},
+        {"type": "tool_use", "id": "a", "name": "list_files", "input": {}},
+        {"type": "tool_use", "id": "b", "name": "read_file", "input": {"path": "x"}},
+    ]
+    messages = [
+        {"role": "user", "content": "task"},
+        {"role": "assistant", "text": "", "tool_calls": [], "payload": payload},
+        {
+            "role": "tool_results",
+            "results": [
+                {"id": "a", "name": "list_files", "content": "x"},
+                {"id": "b", "name": "read_file", "content": "y", "is_error": True},
+            ],
+        },
+    ]
     converted = AnthropicAdapter.to_provider(messages)
     assert converted[1] == {"role": "assistant", "content": payload}
     assert converted[2]["role"] == "user" and len(converted[2]["content"]) == 2
@@ -127,9 +135,11 @@ class Item(NS):
 
 
 def test_openai_request_and_parse():
-    output = [Item(type="reasoning", id="rs_1", encrypted_content="enc", summary=[]),
-              Item(type="message", content=[NS(type="output_text", text="Looking")]),
-              Item(type="function_call", call_id="call_1", name="run_command", arguments='{"command": "pytest"}')]
+    output = [
+        Item(type="reasoning", id="rs_1", encrypted_content="enc", summary=[]),
+        Item(type="message", content=[NS(type="output_text", text="Looking")]),
+        Item(type="function_call", call_id="call_1", name="run_command", arguments='{"command": "pytest"}'),
+    ]
     usage = NS(input_tokens=1200, output_tokens=300, input_tokens_details=NS(cached_tokens=1000))
     client = MockOpenAI(NS(id="resp_1", output=output, usage=usage, status="completed"))
     adapter = OpenAIAdapter(spec(key="gpt-6-astra"), client)
@@ -145,13 +155,17 @@ def test_openai_request_and_parse():
 
 
 def test_openai_replays_items_and_tool_outputs():
-    payload = [{"type": "reasoning", "id": "rs"}, {"type": "function_call", "call_id": "c", "name": "submit",
-                                                    "arguments": "{}"}]
-    items = OpenAIAdapter.to_provider([
-        {"role": "user", "content": "t"},
-        {"role": "assistant", "text": "", "tool_calls": [], "payload": payload},
-        {"role": "tool_results", "results": [{"id": "c", "name": "submit", "content": "submitted"}]},
-    ])
+    payload = [
+        {"type": "reasoning", "id": "rs"},
+        {"type": "function_call", "call_id": "c", "name": "submit", "arguments": "{}"},
+    ]
+    items = OpenAIAdapter.to_provider(
+        [
+            {"role": "user", "content": "t"},
+            {"role": "assistant", "text": "", "tool_calls": [], "payload": payload},
+            {"role": "tool_results", "results": [{"id": "c", "name": "submit", "content": "submitted"}]},
+        ]
+    )
     assert items[1:3] == payload
     assert items[3] == {"type": "function_call_output", "call_id": "c", "output": "submitted"}
 
@@ -159,8 +173,9 @@ def test_openai_replays_items_and_tool_outputs():
 def test_openai_invalid_tool_json_is_flagged():
     output = [Item(type="function_call", call_id="c", name="read_file", arguments="{not json")]
     usage = NS(input_tokens=1, output_tokens=1, input_tokens_details=None)
-    turn = OpenAIAdapter(spec(key="gpt-6-astra"), MockOpenAI(NS(id="r", output=output, usage=usage,
-                                                                    status="completed"))).next_turn("s", [], [])
+    turn = OpenAIAdapter(
+        spec(key="gpt-6-astra"), MockOpenAI(NS(id="r", output=output, usage=usage, status="completed"))
+    ).next_turn("s", [], [])
     assert "__invalid_json__" in turn.tool_calls[0].arguments
 
 

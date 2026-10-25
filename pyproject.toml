@@ -37,3 +37,4 @@ extend-exclude = ["target", "tasks", ".history", ".scratch"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+ignore = ["B905"]

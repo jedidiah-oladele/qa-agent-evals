@@ -27,12 +27,14 @@ def test_pr_commits_are_discoverable():
 @pytest.mark.slow
 def test_every_shopcore_commit_passes_its_suite(tmp_path):
     dest = rebuild("shopcore", tmp_path / "shopcore")
-    shas = subprocess.run(["git", "rev-list", "--reverse", "HEAD"], cwd=dest, capture_output=True,
-                          text=True).stdout.split()
+    shas = subprocess.run(
+        ["git", "rev-list", "--reverse", "HEAD"], cwd=dest, capture_output=True, text=True
+    ).stdout.split()
     for sha in shas:
         subprocess.run(["git", "checkout", "-q", sha], cwd=dest, check=True)
-        result = subprocess.run(["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"], cwd=dest,
-                                capture_output=True, text=True)
+        result = subprocess.run(
+            ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"], cwd=dest, capture_output=True, text=True
+        )
         assert result.returncode == 0, f"{sha}: {result.stdout[-500:]}"
 
 
@@ -43,8 +45,9 @@ def test_every_ledgerkit_commit_passes_its_suite(tmp_path):
     dest = rebuild("ledgerkit", tmp_path / "ledgerkit")
     link_node_modules(dest, str((TARGET / "ledgerkit" / "node_modules").resolve()))
     (dest / ".git" / "info" / "exclude").write_text("node_modules\n")
-    shas = subprocess.run(["git", "rev-list", "--reverse", "HEAD"], cwd=dest, capture_output=True,
-                          text=True).stdout.split()
+    shas = subprocess.run(
+        ["git", "rev-list", "--reverse", "HEAD"], cwd=dest, capture_output=True, text=True
+    ).stdout.split()
     for sha in shas:
         subprocess.run(["git", "checkout", "-q", sha], cwd=dest, check=True)
         result = subprocess.run(["node_modules/.bin/vitest", "run"], cwd=dest, capture_output=True, text=True)

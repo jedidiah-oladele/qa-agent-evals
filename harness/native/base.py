@@ -62,9 +62,14 @@ class NativeHarness:
         raise NotImplementedError
 
     def run(self, task: Task, sandbox: Sandbox, api_key: str) -> NativeResult:
-        result = sandbox.exec(self.command(task), timeout_s=task.limits.timeout_s,
-                              env={self.key_env: api_key, "HOME": "/tmp" if sandbox.workdir == "/work" else
-                                   str(sandbox.workspace_root.parent / "home")})
+        result = sandbox.exec(
+            self.command(task),
+            timeout_s=task.limits.timeout_s,
+            env={
+                self.key_env: api_key,
+                "HOME": "/tmp" if sandbox.workdir == "/work" else str(sandbox.workspace_root.parent / "home"),
+            },
+        )
         parsed = self.parse(result.stdout, task)
         parsed.wall_time_s = result.duration_s
         if result.timed_out:

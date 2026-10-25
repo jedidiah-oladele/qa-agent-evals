@@ -58,14 +58,14 @@ def parse_diff(text: str) -> list[FileDiff]:
         elif line.startswith("deleted file mode"):
             current.new_path = None
         elif line.startswith("rename from "):
-            current.old_path = line[len("rename from "):]
+            current.old_path = line[len("rename from ") :]
         elif line.startswith("rename to "):
-            current.new_path = line[len("rename to "):]
+            current.new_path = line[len("rename to ") :]
         elif line.startswith("Binary files") or line.startswith("GIT binary patch"):
             current.binary = True
         elif line.startswith("--- ") or line.startswith("+++ "):
             continue
-        elif (hunk := _HUNK.match(line)):
+        elif hunk := _HUNK.match(line):
             old_line, new_line = int(hunk.group(1)), int(hunk.group(3))
         elif line.startswith("+"):
             current.added.append((new_line, line[1:]))

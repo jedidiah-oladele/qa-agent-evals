@@ -24,8 +24,14 @@ from harness.task import load_task
 
 AUTHOR = SCRATCH / "author"
 IGNORE = shutil.ignore_patterns("node_modules", "__pycache__", ".pytest_cache", ".ruff_cache", ".git")
-ENV = dict(os.environ, GIT_AUTHOR_NAME="author", GIT_AUTHOR_EMAIL="a@a", GIT_COMMITTER_NAME="author",
-           GIT_COMMITTER_EMAIL="a@a", GIT_CONFIG_GLOBAL=os.devnull)
+ENV = dict(
+    os.environ,
+    GIT_AUTHOR_NAME="author",
+    GIT_AUTHOR_EMAIL="a@a",
+    GIT_COMMITTER_NAME="author",
+    GIT_COMMITTER_EMAIL="a@a",
+    GIT_CONFIG_GLOBAL=os.devnull,
+)
 
 
 def git(cwd: Path, *args: str, input_text: str | None = None) -> str:
@@ -54,8 +60,12 @@ def checkout(task_id: str, clean: bool, lib: str | None) -> Path:
         task = load_task(TASKS / task_id)
         patch = task.path(task.setup.apply_patch) if task.setup.apply_patch else None
         if patch and patch.exists() and patch.read_text().strip():
-            subprocess.run(["git", "apply", "--whitespace=nowarn", str(patch)], cwd=dest, check=True,
-                           env=dict(ENV, GIT_DIR=str(dest / ".nogit")))
+            subprocess.run(
+                ["git", "apply", "--whitespace=nowarn", str(patch)],
+                cwd=dest,
+                check=True,
+                env=dict(ENV, GIT_DIR=str(dest / ".nogit")),
+            )
         for relative in task.setup.remove_paths:
             target = dest / relative
             shutil.rmtree(target) if target.is_dir() else target.unlink(missing_ok=True)

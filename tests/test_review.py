@@ -1,8 +1,10 @@
 from graders.review import match_review, parse_findings
 from harness.task import ReviewDefect
 
-DEFECTS = [ReviewDefect(id="leak", file="src/client.ts", lines=(120, 124), summary="token logged"),
-           ReviewDefect(id="race", file="src/client.ts", lines=(80, 95), summary="refresh not single-flight")]
+DEFECTS = [
+    ReviewDefect(id="leak", file="src/client.ts", lines=(120, 124), summary="token logged"),
+    ReviewDefect(id="race", file="src/client.ts", lines=(80, 95), summary="refresh not single-flight"),
+]
 
 
 def test_parse_common_formats():
@@ -14,7 +16,10 @@ def test_parse_common_formats():
 """
     findings = parse_findings(review)
     assert [(f.file, f.start, f.end) for f in findings] == [
-        ("src/client.ts", 121, 121), ("src/client.ts", 80, 95), ("src/money.ts", 10, 10)]
+        ("src/client.ts", 121, 121),
+        ("src/client.ts", 80, 95),
+        ("src/money.ts", 10, 10),
+    ]
 
 
 def test_matching_with_tolerance_and_false_positives():

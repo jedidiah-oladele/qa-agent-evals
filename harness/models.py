@@ -44,15 +44,18 @@ class ModelError(RuntimeError):
 
 @dataclass
 class Usage:
-    input_tokens: int = 0          # uncached input
-    output_tokens: int = 0         # includes reasoning/thinking tokens
+    input_tokens: int = 0  # uncached input
+    output_tokens: int = 0  # includes reasoning/thinking tokens
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
 
     def __add__(self, other: Usage) -> Usage:
-        return Usage(self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens,
-                     self.cache_read_tokens + other.cache_read_tokens,
-                     self.cache_write_tokens + other.cache_write_tokens)
+        return Usage(
+            self.input_tokens + other.input_tokens,
+            self.output_tokens + other.output_tokens,
+            self.cache_read_tokens + other.cache_read_tokens,
+            self.cache_write_tokens + other.cache_write_tokens,
+        )
 
     @property
     def total(self) -> int:
@@ -67,8 +70,12 @@ def cost_usd(usage: Usage, pricing: Pricing | None) -> float | None:
     if pricing is None:
         return None
     return round(
-        (usage.input_tokens * pricing.input + usage.output_tokens * pricing.output
-         + usage.cache_read_tokens * pricing.cache_read + usage.cache_write_tokens * pricing.cache_write)
+        (
+            usage.input_tokens * pricing.input
+            + usage.output_tokens * pricing.output
+            + usage.cache_read_tokens * pricing.cache_read
+            + usage.cache_write_tokens * pricing.cache_write
+        )
         / 1_000_000,
         6,
     )
@@ -102,8 +109,7 @@ class ToolSpec:
 def require_key(variable: str) -> str:
     value = os.environ.get(variable, "")
     if not value:
-        raise ModelError(f"{variable} is not set; real runs read API keys from the environment",
-                         kind="missing_key")
+        raise ModelError(f"{variable} is not set; real runs read API keys from the environment", kind="missing_key")
     return value
 
 
@@ -120,6 +126,7 @@ class ModelAdapter(ABC):
 
 
 # ------------------------------------------------------------- anthropic ---
+
 
 def _dump(block: Any) -> dict:
     if isinstance(block, dict):
@@ -147,12 +154,24 @@ class AnthropicAdapter(ModelAdapter):
                 if content is None:  # e.g. replayed from a non-Anthropic transcript
                     content = ([{"type": "text", "text": entry["text"]}] if entry.get("text") else []) + [
                         {"type": "tool_use", "id": c.id, "name": c.name, "input": c.arguments}
-                        for c in entry.get("tool_calls", [])]
+                        for c in entry.get("tool_calls", [])
+                    ]
                 converted.append({"role": "assistant", "content": content})
             elif entry["role"] == "tool_results":
-                converted.append({"role": "user", "content": [
-                    {"type": "tool_result", "tool_use_id": r["id"], "content": r["content"],
-                     "is_error": bool(r.get("is_error"))} for r in entry["results"]]})
+                converted.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": r["id"],
+                                "content": r["content"],
+                                "is_error": bool(r.get("is_error")),
+                            }
+                            for r in entry["results"]
+                        ],
+                    }
+                )
         return converted
 
     def request(self, system: str, tools: list[ToolSpec], messages: list[dict]) -> dict:
@@ -197,14 +216,28 @@ class AnthropicAdapter(ModelAdapter):
         if response.stop_reason == "refusal":
             details = getattr(response, "stop_details", None)
             category = getattr(details, "category", None) if details else None
-            turn = ModelTurn("\n".join(texts), [], usage, "refusal", [_dump(b) for b in response.content],
-                             response.id, {"refusal_category": category})
+            turn = ModelTurn(
+                "\n".join(texts),
+                [],
+                usage,
+                "refusal",
+                [_dump(b) for b in response.content],
+                response.id,
+                {"refusal_category": category},
+            )
             return turn
-        return ModelTurn("\n".join(texts), calls, usage, response.stop_reason or "end_turn",
-                         [_dump(b) for b in response.content], response.id)
+        return ModelTurn(
+            "\n".join(texts),
+            calls,
+            usage,
+            response.stop_reason or "end_turn",
+            [_dump(b) for b in response.content],
+            response.id,
+        )
 
 
 # ---------------------------------------------------------------- openai ---
+
 
 class OpenAIAdapter(ModelAdapter):
     def __init__(self, spec: AgentModel, client: Any | None = None) -> None:
@@ -226,13 +259,17 @@ class OpenAIAdapter(ModelAdapter):
                 if payload is None:
                     if entry.get("text"):
                         items.append({"role": "assistant", "content": entry["text"]})
-                    items += [{"type": "function_call", "call_id": c.id, "name": c.name,
-                               "arguments": json.dumps(c.arguments)} for c in entry.get("tool_calls", [])]
+                    items += [
+                        {"type": "function_call", "call_id": c.id, "name": c.name, "arguments": json.dumps(c.arguments)}
+                        for c in entry.get("tool_calls", [])
+                    ]
                 else:
                     items.extend(payload)
             elif entry["role"] == "tool_results":
-                items += [{"type": "function_call_output", "call_id": r["id"], "output": r["content"]}
-                          for r in entry["results"]]
+                items += [
+                    {"type": "function_call_output", "call_id": r["id"], "output": r["content"]}
+                    for r in entry["results"]
+                ]
         return items
 
     def request(self, system: str, tools: list[ToolSpec], messages: list[dict]) -> dict:
@@ -240,8 +277,16 @@ class OpenAIAdapter(ModelAdapter):
             "model": self.spec.model_id,
             "instructions": system,
             "input": self.to_provider(messages),
-            "tools": [{"type": "function", "name": t.name, "description": t.description,
-                       "parameters": t.parameters, "strict": False} for t in tools],
+            "tools": [
+                {
+                    "type": "function",
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "strict": False,
+                }
+                for t in tools
+            ],
             "max_output_tokens": self.spec.max_output_tokens,
             "store": False,
             "include": ["reasoning.encrypted_content"],
@@ -282,11 +327,15 @@ class OpenAIAdapter(ModelAdapter):
                 calls.append(ToolCall(item.call_id, item.name, arguments))
         u = response.usage
         cached = getattr(getattr(u, "input_tokens_details", None), "cached_tokens", 0) or 0
-        usage = Usage(input_tokens=(u.input_tokens or 0) - cached, output_tokens=u.output_tokens or 0,
-                      cache_read_tokens=cached)
+        usage = Usage(
+            input_tokens=(u.input_tokens or 0) - cached, output_tokens=u.output_tokens or 0, cache_read_tokens=cached
+        )
         status = getattr(response, "status", "completed")
-        stop = "refusal" if refused else ("tool_use" if calls else ("max_tokens" if status == "incomplete"
-                                                                     else "end_turn"))
+        stop = (
+            "refusal"
+            if refused
+            else ("tool_use" if calls else ("max_tokens" if status == "incomplete" else "end_turn"))
+        )
         return ModelTurn("\n".join(texts), calls, usage, stop, payload, response.id)
 
 
@@ -300,25 +349,32 @@ def make_adapter(spec: AgentModel, client: Any | None = None, task: Any | None =
     return FakeModel(spec, task=task, run_index=run_index)
 
 
-def complete_text(provider: str, model_id: str, system: str, prompt: str, *, max_tokens: int = 2000,
-                  client: Any | None = None) -> tuple[str, Usage]:
+def complete_text(
+    provider: str, model_id: str, system: str, prompt: str, *, max_tokens: int = 2000, client: Any | None = None
+) -> tuple[str, Usage]:
     """One plain completion (used by the rubric judge)."""
     if provider == "anthropic":
         import anthropic
 
         client = client or anthropic.Anthropic(api_key=require_key("ANTHROPIC_API_KEY"), max_retries=6)
-        response = client.messages.create(model=model_id, max_tokens=max_tokens, system=system,
-                                          messages=[{"role": "user", "content": prompt}])
+        response = client.messages.create(
+            model=model_id, max_tokens=max_tokens, system=system, messages=[{"role": "user", "content": prompt}]
+        )
         text = "".join(b.text for b in response.content if b.type == "text")
         u = response.usage
-        return text, Usage(u.input_tokens or 0, u.output_tokens or 0, getattr(u, "cache_read_input_tokens", 0) or 0,
-                           getattr(u, "cache_creation_input_tokens", 0) or 0)
+        return text, Usage(
+            u.input_tokens or 0,
+            u.output_tokens or 0,
+            getattr(u, "cache_read_input_tokens", 0) or 0,
+            getattr(u, "cache_creation_input_tokens", 0) or 0,
+        )
     if provider == "openai":
         import openai
 
         client = client or openai.OpenAI(api_key=require_key("OPENAI_API_KEY"), max_retries=6)
-        response = client.responses.create(model=model_id, instructions=system, input=prompt,
-                                           max_output_tokens=max_tokens, store=False)
+        response = client.responses.create(
+            model=model_id, instructions=system, input=prompt, max_output_tokens=max_tokens, store=False
+        )
         u = response.usage
         cached = getattr(getattr(u, "input_tokens_details", None), "cached_tokens", 0) or 0
         return response.output_text, Usage((u.input_tokens or 0) - cached, u.output_tokens or 0, cached)

@@ -18,8 +18,8 @@ class Scripted:
         return item
 
 
-def turn(*calls, text="", usage=Usage(10, 5)):
-    return ModelTurn(text, [ToolCall(f"c{i}", n, a) for i, (n, a) in enumerate(calls)], usage, "tool_use")
+def turn(*calls, text=""):
+    return ModelTurn(text, [ToolCall(f"c{i}", n, a) for i, (n, a) in enumerate(calls)], Usage(10, 5), "tool_use")
 
 
 def episode(task, adapter, **kw):
@@ -39,10 +39,12 @@ def test_same_system_prompt_and_tools_for_every_model(py_task):
 
 
 def test_submit_ends_the_episode_and_usage_is_summed(py_task):
-    adapter = Scripted([
-        turn(("write_file", {"path": "NOTES.md", "content": "hi\n"})),
-        turn(("run_command", {"command": "echo ok"}), ("submit", {"summary": "done"})),
-    ])
+    adapter = Scripted(
+        [
+            turn(("write_file", {"path": "NOTES.md", "content": "hi\n"})),
+            turn(("run_command", {"command": "echo ok"}), ("submit", {"summary": "done"})),
+        ]
+    )
     result, diff = episode(py_task, adapter)
     assert result.stop_reason == "submitted" and result.steps == 2 and result.tool_calls == 3
     assert result.usage.input_tokens == 20 and result.submit_summary == "done"

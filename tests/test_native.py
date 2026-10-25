@@ -11,12 +11,32 @@ from harness.workspace import build_workspace
 
 CLAUDE_EVENTS = [
     {"type": "system", "subtype": "init"},
-    {"type": "assistant", "message": {"content": [{"type": "text", "text": "Reading"},
-                                                  {"type": "tool_use", "name": "Read", "input": {"file_path": "src/shopcore/tax.py"}}]}},
-    {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q"}}]}},
-    {"type": "result", "subtype": "success", "num_turns": 2, "total_cost_usd": 0.42, "is_error": False,
-     "usage": {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 5000,
-               "cache_creation_input_tokens": 300}},
+    {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "text", "text": "Reading"},
+                {"type": "tool_use", "name": "Read", "input": {"file_path": "src/shopcore/tax.py"}},
+            ]
+        },
+    },
+    {
+        "type": "assistant",
+        "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "pytest -q"}}]},
+    },
+    {
+        "type": "result",
+        "subtype": "success",
+        "num_turns": 2,
+        "total_cost_usd": 0.42,
+        "is_error": False,
+        "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 200,
+            "cache_read_input_tokens": 5000,
+            "cache_creation_input_tokens": 300,
+        },
+    },
 ]
 CODEX_EVENTS = [
     {"type": "thread.started"},
@@ -48,7 +68,8 @@ def test_claude_code_command_and_parse(py_task):
 
 def test_codex_parse(py_task):
     result = CodexHarness("gpt-6-astra", cli_path="/x/codex").parse(
-        "noise\n" + "\n".join(json.dumps(e) for e in CODEX_EVENTS), py_task)
+        "noise\n" + "\n".join(json.dumps(e) for e in CODEX_EVENTS), py_task
+    )
     assert result.usage.input_tokens == 1000 and result.usage.cache_read_tokens == 2000
     assert [e["name"] for e in result.trajectory if e["type"] == "tool_call"] == ["run_command", "write_file"]
 
@@ -64,9 +85,8 @@ def test_native_run_in_a_sandbox_with_a_fake_cli(tmp_path, py_task):
 
 
 def test_missing_cli_is_skipped_cleanly(py_task):
-    from harness.config import models_config
+    from harness.config import models_config, run_config
     from harness.run import Participant, run_one
-    from harness.config import run_config
 
     config = models_config()
     native = config.native_harnesses[0]

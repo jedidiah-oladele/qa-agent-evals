@@ -73,8 +73,14 @@ def attribute(record: dict, invalid: frozenset[str] | None = None) -> Attributio
     if primary.get("environment_error"):
         return Attribution("environment", "sandbox failed during grading", str(primary["environment_error"])[:300])
     tail = str(details.get("output_tail", ""))
-    for marker in ("No module named pytest", "vitest: not found", "Cannot find module 'vitest", "ENOSPC",
-                   "Killed", "bwrap:"):
+    for marker in (
+        "No module named pytest",
+        "vitest: not found",
+        "Cannot find module 'vitest",
+        "ENOSPC",
+        "Killed",
+        "bwrap:",
+    ):
         if marker in tail and not record.get("diff"):
             return Attribution("environment", "test runner could not start", marker)
 
@@ -88,8 +94,11 @@ def attribute(record: dict, invalid: frozenset[str] | None = None) -> Attributio
     if missing and not suite.get("collection_errors") and not suite.get("runner_error"):
         return Attribution("grader", "required test ids were not collected", _first(missing))
     judge_errors = [r["id"] for r in record.get("rubric", []) if r.get("verdict") == "error"]
-    if judge_errors and record.get("primary_pass") and not any(
-            not c.get("passed", True) for c in record.get("negative_checks", [])):
+    if (
+        judge_errors
+        and record.get("primary_pass")
+        and not any(not c.get("passed", True) for c in record.get("negative_checks", []))
+    ):
         return Attribution("grader", "judge or auto check errored", _first(judge_errors))
 
     # -- agent ----------------------------------------------------------------
@@ -117,16 +126,22 @@ def attribute(record: dict, invalid: frozenset[str] | None = None) -> Attributio
     if kind == "mutation":
         if details.get("reason"):
             return Attribution("agent", "tests unusable", details["reason"])
-        return Attribution("agent", "tests too weak", f"kill rate {details.get('kill_rate')} < "
-                                                       f"{details.get('required')}")
+        return Attribution(
+            "agent", "tests too weak", f"kill rate {details.get('kill_rate')} < {details.get('required')}"
+        )
     if kind == "repeated_runs":
-        return Attribution("agent", "suite still flaky", f"{details.get('failed_runs')}/{details.get('runs')} runs "
-                                                         f"failed: {_first((details.get('failures') or [{}])[0].get('failing', []))}")
+        return Attribution(
+            "agent",
+            "suite still flaky",
+            f"{details.get('failed_runs')}/{details.get('runs')} runs "
+            f"failed: {_first((details.get('failures') or [{}])[0].get('failing', []))}",
+        )
     if kind == "review_findings":
         if details.get("reason"):
             return Attribution("agent", "no review written", details["reason"])
         if details.get("missed"):
             return Attribution("agent", "review missed seeded defects", _first(details["missed"]))
-        return Attribution("agent", "review invented too many defects",
-                           f"{len(details.get('false_positives', []))} unmatched findings")
+        return Attribution(
+            "agent", "review invented too many defects", f"{len(details.get('false_positives', []))} unmatched findings"
+        )
     return Attribution("agent", f"primary grader failed ({kind})", f"stop_reason={stop}")

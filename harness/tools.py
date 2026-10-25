@@ -27,43 +27,71 @@ TOOL_SPECS: list[ToolSpec] = [
         "list_files",
         "List files under a directory of the repository (recursively, up to max_depth levels). "
         "Skips .git, node_modules and caches.",
-        {"type": "object", "properties": {
-            "path": {"type": "string", "description": "Directory relative to the repository root.", "default": "."},
-            "max_depth": {"type": "integer", "description": "How many levels to descend (default 3).",
-                          "default": 3}},
-         "required": [], "additionalProperties": False},
+        {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Directory relative to the repository root.", "default": "."},
+                "max_depth": {
+                    "type": "integer",
+                    "description": "How many levels to descend (default 3).",
+                    "default": 3,
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
     ),
     ToolSpec(
         "read_file",
         "Read a text file. Returns numbered lines. Use start_line/end_line for large files.",
-        {"type": "object", "properties": {
-            "path": {"type": "string", "description": "File path relative to the repository root."},
-            "start_line": {"type": "integer", "description": "First line to return (1-based).", "default": 1},
-            "end_line": {"type": "integer", "description": "Last line to return (inclusive)."}},
-         "required": ["path"], "additionalProperties": False},
+        {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to the repository root."},
+                "start_line": {"type": "integer", "description": "First line to return (1-based).", "default": 1},
+                "end_line": {"type": "integer", "description": "Last line to return (inclusive)."},
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
     ),
     ToolSpec(
         "write_file",
         "Create or overwrite a file with the given full content. Parent directories are created.",
-        {"type": "object", "properties": {
-            "path": {"type": "string", "description": "File path relative to the repository root."},
-            "content": {"type": "string", "description": "The complete new file content."}},
-         "required": ["path", "content"], "additionalProperties": False},
+        {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to the repository root."},
+                "content": {"type": "string", "description": "The complete new file content."},
+            },
+            "required": ["path", "content"],
+            "additionalProperties": False,
+        },
     ),
     ToolSpec(
         "run_command",
         "Run a bash command in the repository root (no network). Returns the exit code and output.",
-        {"type": "object", "properties": {
-            "command": {"type": "string", "description": "The bash command to run."},
-            "timeout_s": {"type": "integer", "description": "Seconds before the command is killed (max 300)."}},
-         "required": ["command"], "additionalProperties": False},
+        {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "The bash command to run."},
+                "timeout_s": {"type": "integer", "description": "Seconds before the command is killed (max 300)."},
+            },
+            "required": ["command"],
+            "additionalProperties": False,
+        },
     ),
     ToolSpec(
         "submit",
         "Finish the task. Call this exactly once, when your changes are complete.",
-        {"type": "object", "properties": {
-            "summary": {"type": "string", "description": "One or two sentences describing what you changed."}},
-         "required": ["summary"], "additionalProperties": False},
+        {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string", "description": "One or two sentences describing what you changed."}
+            },
+            "required": ["summary"],
+            "additionalProperties": False,
+        },
     ),
 ]
 
@@ -81,8 +109,13 @@ class ToolOutcome:
 
 
 class ToolExecutor:
-    def __init__(self, workspace_root: Path, sandbox: Sandbox, config: SandboxConfig | None = None,
-                 readonly_roots: list[Path] | None = None) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        sandbox: Sandbox,
+        config: SandboxConfig | None = None,
+        readonly_roots: list[Path] | None = None,
+    ) -> None:
         self.root = Path(workspace_root).resolve()
         self.sandbox = sandbox
         self.config = config or SandboxConfig()
@@ -96,7 +129,7 @@ class ToolExecutor:
         if text == workdir:
             text = "."
         elif text.startswith(workdir + "/"):
-            text = text[len(workdir) + 1:]
+            text = text[len(workdir) + 1 :]
         if os.path.isabs(text):
             raise PathEscape(f"absolute path outside the repository: {raw}")
         candidate = (self.root / text).resolve()
@@ -175,8 +208,13 @@ class ToolExecutor:
         return ToolOutcome("submitted", submitted=True)
 
     def execute(self, call: ToolCall) -> ToolOutcome:
-        handler = {"list_files": self.list_files, "read_file": self.read_file, "write_file": self.write_file,
-                   "run_command": self.run_command, "submit": self.submit}.get(call.name)
+        handler = {
+            "list_files": self.list_files,
+            "read_file": self.read_file,
+            "write_file": self.write_file,
+            "run_command": self.run_command,
+            "submit": self.submit,
+        }.get(call.name)
         if handler is None:
             return ToolOutcome(f"error: unknown tool {call.name!r}", is_error=True)
         if "__invalid_json__" in call.arguments:

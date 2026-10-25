@@ -55,8 +55,14 @@ def _preview(text: str, limit: int = 400) -> str:
     return text if len(text) <= limit else text[:limit] + f"... [{len(text) - limit} more chars]"
 
 
-def run_episode(task: Task, adapter, executor: ToolExecutor, *, tools: list[ToolSpec] | None = None,
-                clock: Callable[[], float] = time.monotonic) -> Episode:
+def run_episode(
+    task: Task,
+    adapter,
+    executor: ToolExecutor,
+    *,
+    tools: list[ToolSpec] | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> Episode:
     tools = tools or TOOL_SPECS
     system = system_prompt(task)
     messages: list[dict] = [{"role": "user", "content": task.prompt.strip()}]
@@ -81,11 +87,20 @@ def run_episode(task: Task, adapter, executor: ToolExecutor, *, tools: list[Tool
             trajectory.append({"type": "model_error", "step": step, "kind": exc.kind, "error": str(exc)[:500]})
             break
         usage = usage + turn.usage
-        trajectory.append({"type": "model_turn", "step": step, "text": _preview(turn.text, 1500),
-                           "stop_reason": turn.stop_reason, "usage": turn.usage.to_dict(),
-                           "tool_calls": len(turn.tool_calls), **({"extra": turn.extra} if turn.extra else {})})
-        messages.append({"role": "assistant", "text": turn.text, "tool_calls": turn.tool_calls,
-                         "payload": turn.payload})
+        trajectory.append(
+            {
+                "type": "model_turn",
+                "step": step,
+                "text": _preview(turn.text, 1500),
+                "stop_reason": turn.stop_reason,
+                "usage": turn.usage.to_dict(),
+                "tool_calls": len(turn.tool_calls),
+                **({"extra": turn.extra} if turn.extra else {}),
+            }
+        )
+        messages.append(
+            {"role": "assistant", "text": turn.text, "tool_calls": turn.tool_calls, "payload": turn.payload}
+        )
         if turn.stop_reason == "refusal":
             stop_reason = "refusal"
             break
@@ -101,11 +116,18 @@ def run_episode(task: Task, adapter, executor: ToolExecutor, *, tools: list[Tool
         for call in turn.tool_calls:
             outcome = executor.execute(call)
             calls_made += 1
-            trajectory.append({"type": "tool_call", "step": step, "name": call.name,
-                               "arguments": _truncate_args(call), "is_error": outcome.is_error,
-                               "path_escape": outcome.path_escape, "output": _preview(outcome.content)})
-            results.append({"id": call.id, "name": call.name, "content": outcome.content,
-                            "is_error": outcome.is_error})
+            trajectory.append(
+                {
+                    "type": "tool_call",
+                    "step": step,
+                    "name": call.name,
+                    "arguments": _truncate_args(call),
+                    "is_error": outcome.is_error,
+                    "path_escape": outcome.path_escape,
+                    "output": _preview(outcome.content),
+                }
+            )
+            results.append({"id": call.id, "name": call.name, "content": outcome.content, "is_error": outcome.is_error})
             submitted = submitted or outcome.submitted
         messages.append({"role": "tool_results", "results": results})
         if submitted:
@@ -115,9 +137,18 @@ def run_episode(task: Task, adapter, executor: ToolExecutor, *, tools: list[Tool
             stop_reason = "timeout"
             break
 
-    return Episode(stop_reason=stop_reason, steps=steps, usage=usage, trajectory=trajectory,
-                   wall_time_s=round(clock() - start, 2), error=error, error_kind=error_kind,
-                   submit_summary=executor.submit_summary, tool_calls=calls_made, transcript=messages)
+    return Episode(
+        stop_reason=stop_reason,
+        steps=steps,
+        usage=usage,
+        trajectory=trajectory,
+        wall_time_s=round(clock() - start, 2),
+        error=error,
+        error_kind=error_kind,
+        submit_summary=executor.submit_summary,
+        tool_calls=calls_made,
+        transcript=messages,
+    )
 
 
 def _truncate_args(call: ToolCall) -> dict:

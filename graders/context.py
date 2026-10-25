@@ -32,18 +32,26 @@ class GradeContext:
             self.artifacts = artifacts_from_diff(self.diff)
 
     @contextmanager
-    def environment(self, *, diff: str | None = None, hidden: bool = False, apply_bug: bool = True,
-                    extra_env: dict[str, str] | None = None) -> Iterator[tuple[Workspace, Sandbox]]:
+    def environment(
+        self,
+        *,
+        diff: str | None = None,
+        hidden: bool = False,
+        apply_bug: bool = True,
+        extra_env: dict[str, str] | None = None,
+    ) -> Iterator[tuple[Workspace, Sandbox]]:
         """A fresh grading workspace + sandbox. ``diff`` defaults to the submission."""
-        workspace = build_workspace(self.task, node_modules=node_modules_for(self.backend), agent_git=False,
-                                    apply_bug=apply_bug, label="grade")
+        workspace = build_workspace(
+            self.task, node_modules=node_modules_for(self.backend), agent_git=False, apply_bug=apply_bug, label="grade"
+        )
         try:
             patch = self.diff if diff is None else diff
             apply_patch(workspace.root, patch)
             if hidden:
                 copy_hidden_tests(self.task, workspace.root)
-            sandbox = create_sandbox(workspace.root, self.backend, config=self.config.sandbox,
-                                     env={**self.task.env, **(extra_env or {})})
+            sandbox = create_sandbox(
+                workspace.root, self.backend, config=self.config.sandbox, env={**self.task.env, **(extra_env or {})}
+            )
             try:
                 yield workspace, sandbox
             finally:

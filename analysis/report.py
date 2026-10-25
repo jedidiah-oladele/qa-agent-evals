@@ -22,7 +22,7 @@ from harness.config import run_config
 from harness.paths import REPO, RESULTS, RUNS
 
 from .failure_attribution import attribute
-from .stats import Estimate, cohen_kappa, mean_score, pass_at_1, pass_hat, paired_difference, per_task
+from .stats import Estimate, cohen_kappa, mean_score, paired_difference, pass_at_1, pass_hat, per_task
 
 CHARTS = RESULTS / "charts"
 CATEGORIES = ["bug_fix", "pr_derived", "write_tests", "flaky_test", "ci_triage", "code_review"]
@@ -138,11 +138,17 @@ class Analysis:
         judged = sum(1 for r in self.records for i in r.get("rubric", []) if i.get("grader") == "judge")
         valid = [(a, b) for a, b in pairs if a in ("pass", "fail") and b in ("pass", "fail")]
         agree = sum(a == b for a, b in valid)
-        return {"judged": judged, "cross_checked": len(pairs), "comparable": len(valid),
-                "agreement": (agree / len(valid)) if valid else None, "kappa": cohen_kappa(valid)}
+        return {
+            "judged": judged,
+            "cross_checked": len(pairs),
+            "comparable": len(valid),
+            "agreement": (agree / len(valid)) if valid else None,
+            "kappa": cohen_kappa(valid),
+        }
 
 
 # ---------------------------------------------------------------- charts ----
+
 
 def _style(ax, fig):
     fig.patch.set_facecolor(SURFACE)
@@ -175,8 +181,16 @@ def charts(analysis: Analysis, dry: bool, out_dir: Path = CHARTS) -> list[str]:
     ys = list(range(len(ests)))[::-1]
     for y, p, e in zip(ys, analysis.participants, ests):
         ax.barh(y, e.value * 100, height=0.5, color=colors[p], zorder=2)
-        ax.errorbar(e.value * 100, y, xerr=[[max(0, (e.value - e.low) * 100)], [max(0, (e.high - e.value) * 100)]],
-                    fmt="none", ecolor=INK, elinewidth=1.5, capsize=4, zorder=3)
+        ax.errorbar(
+            e.value * 100,
+            y,
+            xerr=[[max(0, (e.value - e.low) * 100)], [max(0, (e.high - e.value) * 100)]],
+            fmt="none",
+            ecolor=INK,
+            elinewidth=1.5,
+            capsize=4,
+            zorder=3,
+        )
         ax.text(min(e.high * 100 + 2, 101), y, f"{e.value * 100:.0f}%", va="center", fontsize=9, color=INK)
     ax.set_yticks(ys, analysis.participants)
     ax.set_xlim(0, 110)
@@ -206,8 +220,9 @@ def charts(analysis: Analysis, dry: bool, out_dir: Path = CHARTS) -> list[str]:
     for i, row in enumerate(grid):
         for j, v in enumerate(row):
             if v == v:
-                ax.text(j, i, f"{v * 100:.0f}%", ha="center", va="center", fontsize=9,
-                        color="#ffffff" if v > 0.55 else INK)
+                ax.text(
+                    j, i, f"{v * 100:.0f}%", ha="center", va="center", fontsize=9, color="#ffffff" if v > 0.55 else INK
+                )
     ax.set_xticks(range(len(CATEGORIES)), [c.replace("_", " ") for c in CATEGORIES])
     ax.set_yticks(range(len(analysis.participants)), analysis.participants)
     for spine in ax.spines.values():
@@ -233,8 +248,9 @@ def charts(analysis: Analysis, dry: bool, out_dir: Path = CHARTS) -> list[str]:
         for label in labels:
             n = counts[p][label]
             if n:
-                ax.barh(y, n, left=left, height=0.5, color=label_colors[label], edgecolor=SURFACE, linewidth=2,
-                        zorder=2)
+                ax.barh(
+                    y, n, left=left, height=0.5, color=label_colors[label], edgecolor=SURFACE, linewidth=2, zorder=2
+                )
                 ax.text(left + n / 2, y, str(n), ha="center", va="center", fontsize=8, color="#ffffff")
                 left += n
     ax.set_yticks(ys, analysis.participants)
@@ -244,8 +260,9 @@ def charts(analysis: Analysis, dry: bool, out_dir: Path = CHARTS) -> list[str]:
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.xaxis.grid(True, color=GRID, linewidth=0.8, zorder=0)
     handles = [plt.Rectangle((0, 0), 1, 1, color=label_colors[lbl]) for lbl in labels]
-    ax.legend(handles, [f"{lbl} error" for lbl in labels], frameon=False, fontsize=8, labelcolor=INK2,
-              loc="lower right")
+    ax.legend(
+        handles, [f"{lbl} error" for lbl in labels], frameon=False, fontsize=8, labelcolor=INK2, loc="lower right"
+    )
     ax.set_title("Failure attribution" + note, fontsize=10, loc="left")
     fig.tight_layout()
     path = out_dir / "failure_attribution.png"
@@ -256,6 +273,7 @@ def charts(analysis: Analysis, dry: bool, out_dir: Path = CHARTS) -> list[str]:
 
 
 # ---------------------------------------------------------------- report ----
+
 
 def table(header: list[str], rows: list[list[str]]) -> str:
     lines = ["| " + " | ".join(header) + " |", "| " + " | ".join("---" for _ in header) + " |"]
@@ -277,8 +295,16 @@ def case_studies(analysis: Analysis, minimum: int = 5, maximum: int = 8) -> list
     seen_reasons: set[tuple] = set()
     seen_tasks: set[str] = set()
     # Prefer variety: one per (label, reason), spread across categories and participants.
-    for r, a in sorted(failures, key=lambda x: (x[1].label != "agent", x[0]["category"], x[0]["participant"],
-                                                x[0]["task_id"], x[0]["run_index"])):
+    for r, a in sorted(
+        failures,
+        key=lambda x: (
+            x[1].label != "agent",
+            x[0]["category"],
+            x[0]["participant"],
+            x[0]["task_id"],
+            x[0]["run_index"],
+        ),
+    ):
         key = (a.label, a.reason)
         if key in seen_reasons or r["task_id"] in seen_tasks:
             continue
@@ -312,8 +338,10 @@ def case_studies(analysis: Analysis, minimum: int = 5, maximum: int = 8) -> list
             part.append(f"- **Agent's summary:** {r['submit_summary'][:300]}")
         if failed_items:
             item = failed_items[0]
-            part.append(f"- **Rubric item `{item['id']}` failed ({item.get('judge_model')}):** "
-                        f"{str(item.get('rationale'))[:300]}")
+            part.append(
+                f"- **Rubric item `{item['id']}` failed ({item.get('judge_model')}):** "
+                f"{str(item.get('rationale'))[:300]}"
+            )
         if r.get("diff"):
             part += ["", "```diff", diff_excerpt(r["diff"]), "```"]
         out.append("\n".join(part))
@@ -357,56 +385,119 @@ def render(analysis: Analysis, dry: bool, chart_files: list[str], sources: list[
     ]
     if analysis.skipped:
         reasons = Counter((r["participant"], r.get("error")) for r in analysis.skipped)
-        lines.append("Skipped participants: " + "; ".join(f"`{p}` ({why}, {n} tasks)" for (p, why), n in
-                                                            reasons.items()))
+        lines.append(
+            "Skipped participants: " + "; ".join(f"`{p}` ({why}, {n} tasks)" for (p, why), n in reasons.items())
+        )
         lines.append("")
 
     lines += ["## Overall", ""]
     rows = []
     for o in overall:
-        rows.append([f"`{o['participant']}`", o["harness"], str(o["runs"]), o["pass_at_1"].fmt(),
-                     o["pass_hat_k"].fmt() if o["pass_hat_k"] else "-", o["task_score"].fmt(pct=False),
-                     f"{o['steps']:.1f}", fmt_money(o["cost"]), fmt_money(o["judge_cost"]),
-                     str(o["flagged_runs"]), str(o["errors"])])
-    lines.append(table(["Model", "Harness", "Runs", "pass@1 [95% CI]", f"pass^{analysis.k} [95% CI]",
-                        "Task score [95% CI]", "Mean steps", "Mean agent cost/run", "Mean judge cost/run",
-                        "Runs flagged by negative checks", "Run errors"], rows))
+        rows.append(
+            [
+                f"`{o['participant']}`",
+                o["harness"],
+                str(o["runs"]),
+                o["pass_at_1"].fmt(),
+                o["pass_hat_k"].fmt() if o["pass_hat_k"] else "-",
+                o["task_score"].fmt(pct=False),
+                f"{o['steps']:.1f}",
+                fmt_money(o["cost"]),
+                fmt_money(o["judge_cost"]),
+                str(o["flagged_runs"]),
+                str(o["errors"]),
+            ]
+        )
+    lines.append(
+        table(
+            [
+                "Model",
+                "Harness",
+                "Runs",
+                "pass@1 [95% CI]",
+                f"pass^{analysis.k} [95% CI]",
+                "Task score [95% CI]",
+                "Mean steps",
+                "Mean agent cost/run",
+                "Mean judge cost/run",
+                "Runs flagged by negative checks",
+                "Run errors",
+            ],
+            rows,
+        )
+    )
     lines += ["", f"![pass@1 by model]({chart_files[0]})" if chart_files else "", ""]
 
     if len(analysis.participants) > 1:
-        lines += ["## Pairwise differences in pass@1", "",
-                  "Paired by task; an interval that excludes 0 is a difference the data supports.", ""]
+        lines += [
+            "## Pairwise differences in pass@1",
+            "",
+            "Paired by task; an interval that excludes 0 is a difference the data supports.",
+            "",
+        ]
         rows = []
         ps = analysis.participants
         for i, a in enumerate(ps):
-            for b in ps[i + 1:]:
-                d = paired_difference(per_task(analysis.groups[a]), per_task(analysis.groups[b]),
-                                      samples=analysis.samples, seed=analysis.seed)
-                rows.append([f"`{a}` - `{b}`", f"{d.value * 100:+.1f} pts [{d.low * 100:+.1f}, {d.high * 100:+.1f}]",
-                             str(d.n_tasks)])
+            for b in ps[i + 1 :]:
+                d = paired_difference(
+                    per_task(analysis.groups[a]),
+                    per_task(analysis.groups[b]),
+                    samples=analysis.samples,
+                    seed=analysis.seed,
+                )
+                rows.append(
+                    [
+                        f"`{a}` - `{b}`",
+                        f"{d.value * 100:+.1f} pts [{d.low * 100:+.1f}, {d.high * 100:+.1f}]",
+                        str(d.n_tasks),
+                    ]
+                )
         lines += [table(["Comparison", "Difference [95% CI]", "Shared tasks"], rows), ""]
 
-    lines += ["## By category (pass@1 [95% CI])", "",
-              table(["Model"] + CATEGORIES, analysis.slice_table("category", CATEGORIES)), ""]
+    lines += [
+        "## By category (pass@1 [95% CI])",
+        "",
+        table(["Model"] + CATEGORIES, analysis.slice_table("category", CATEGORIES)),
+        "",
+    ]
     if len(chart_files) > 1:
         lines += [f"![pass@1 by category]({chart_files[1]})", ""]
-    lines += ["## By language (pass@1 [95% CI])", "",
-              table(["Model"] + LANGUAGES, analysis.slice_table("language", LANGUAGES)), ""]
-    lines += ["## By difficulty (pass@1 [95% CI])", "",
-              table(["Model"] + DIFFICULTIES, analysis.slice_table("difficulty", DIFFICULTIES)), ""]
+    lines += [
+        "## By language (pass@1 [95% CI])",
+        "",
+        table(["Model"] + LANGUAGES, analysis.slice_table("language", LANGUAGES)),
+        "",
+    ]
+    lines += [
+        "## By difficulty (pass@1 [95% CI])",
+        "",
+        table(["Model"] + DIFFICULTIES, analysis.slice_table("difficulty", DIFFICULTIES)),
+        "",
+    ]
 
     attributions = analysis.attributions()
-    lines += ["## Failure attribution", "",
-              "Every failed run (primary fail or a negative check fired) is labelled by "
-              "`analysis/failure_attribution.py` as an agent, environment or grader error.", ""]
+    lines += [
+        "## Failure attribution",
+        "",
+        "Every failed run (primary fail or a negative check fired) is labelled by "
+        "`analysis/failure_attribution.py` as an agent, environment or grader error.",
+        "",
+    ]
     counts = defaultdict(Counter)
     reasons = Counter()
     for r, a in attributions:
         counts[r["participant"]][a.label] += 1
         reasons[(a.label, a.reason)] += 1
-    rows = [[f"`{p}`", str(sum(1 for r in analysis.groups[p] if attribute(r) is not None)),
-             str(counts[p]["agent"]), str(counts[p]["environment"]), str(counts[p]["grader"])]
-            for p in analysis.participants]
+    rows = [
+        [
+            f"`{p}`",
+            str(sum(1 for r in analysis.groups[p] if attribute(r) is not None)),
+            str(counts[p]["agent"]),
+            str(counts[p]["environment"]),
+            str(counts[p]["grader"]),
+        ]
+        for p in analysis.participants
+    ]
     lines += [table(["Model", "Failed runs", "Agent", "Environment", "Grader"], rows), ""]
     lines += [table(["Label", "Reason", "Runs"], [[lbl, why, str(n)] for (lbl, why), n in reasons.most_common()]), ""]
     if len(chart_files) > 2:
@@ -419,24 +510,38 @@ def render(analysis: Analysis, dry: bool, chart_files: list[str], sources: list[
                 check_counts[r["participant"]][c["name"]] += 1
     names = sorted({n for c in check_counts.values() for n in c})
     if names:
-        lines += ["## Negative-check flags", "",
-                  table(["Model"] + names, [[f"`{p}`"] + [str(check_counts[p][n]) for n in names]
-                                            for p in analysis.participants]), ""]
+        lines += [
+            "## Negative-check flags",
+            "",
+            table(
+                ["Model"] + names,
+                [[f"`{p}`"] + [str(check_counts[p][n]) for n in names] for p in analysis.participants],
+            ),
+            "",
+        ]
 
     ja = analysis.judge_agreement()
     lines += ["## Judge cross-check", ""]
     if ja["cross_checked"]:
         agreement = f"{ja['agreement'] * 100:.1f}%" if ja["agreement"] is not None else "n/a"
         kappa = f"{ja['kappa']:.2f}" if ja["kappa"] is not None else "n/a"
-        lines += [f"{ja['cross_checked']} of {ja['judged']} judged rubric items (a deterministic ~20% sample, seed {cfg.seed}) were "
-                  f"re-judged by the cross-check judge: raw agreement **{agreement}**, Cohen's kappa **{kappa}** "
-                  f"over {ja['comparable']} comparable verdicts. Human calibration is tracked separately in "
-                  "`docs/judge_calibration.md`.", ""]
+        lines += [
+            f"{ja['cross_checked']} of {ja['judged']} judged rubric items "
+            f"(a deterministic ~20% sample, seed {cfg.seed}) were "
+            f"re-judged by the cross-check judge: raw agreement **{agreement}**, Cohen's kappa **{kappa}** "
+            f"over {ja['comparable']} comparable verdicts. Human calibration is tracked separately in "
+            "`docs/judge_calibration.md`.",
+            "",
+        ]
     else:
         lines += ["No cross-checked items in these runs.", ""]
 
-    lines += ["## Failure case studies", "",
-              "Selected automatically for variety (distinct failure reasons, tasks and categories).", ""]
+    lines += [
+        "## Failure case studies",
+        "",
+        "Selected automatically for variety (distinct failure reasons, tasks and categories).",
+        "",
+    ]
     studies = case_studies(analysis)
     lines += ["\n\n".join(studies) if studies else "No failed runs.", ""]
     return "\n".join(lines)
@@ -445,28 +550,74 @@ def render(analysis: Analysis, dry: bool, chart_files: list[str], sources: list[
 def write_csv(analysis: Analysis, path: Path) -> None:
     with open(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["participant", "harness", "model", "slice", "value", "runs", "tasks", "pass_at_1",
-                         "pass_at_1_low", "pass_at_1_high", f"pass_hat_{analysis.k}", "mean_task_score",
-                         "mean_steps", "mean_cost_usd", "dry_run"])
+        writer.writerow(
+            [
+                "participant",
+                "harness",
+                "model",
+                "slice",
+                "value",
+                "runs",
+                "tasks",
+                "pass_at_1",
+                "pass_at_1_low",
+                "pass_at_1_high",
+                f"pass_hat_{analysis.k}",
+                "mean_task_score",
+                "mean_steps",
+                "mean_cost_usd",
+                "dry_run",
+            ]
+        )
         for p in analysis.participants:
             o = analysis.overall(p)
             rs = analysis.groups[p]
             dry = any(r.get("dry_run") for r in rs)
             ph = o["pass_hat_k"].value if o["pass_hat_k"] else ""
-            writer.writerow([p, o["harness"], o["model"], "overall", "all", o["runs"], o["tasks"],
-                             f"{o['pass_at_1'].value:.4f}", f"{o['pass_at_1'].low:.4f}", f"{o['pass_at_1'].high:.4f}",
-                             f"{ph:.4f}" if ph != "" else "", f"{o['task_score'].value:.4f}", f"{o['steps']:.2f}",
-                             "" if o["cost"] is None else f"{o['cost']:.6f}", dry])
+            writer.writerow(
+                [
+                    p,
+                    o["harness"],
+                    o["model"],
+                    "overall",
+                    "all",
+                    o["runs"],
+                    o["tasks"],
+                    f"{o['pass_at_1'].value:.4f}",
+                    f"{o['pass_at_1'].low:.4f}",
+                    f"{o['pass_at_1'].high:.4f}",
+                    f"{ph:.4f}" if ph != "" else "",
+                    f"{o['task_score'].value:.4f}",
+                    f"{o['steps']:.2f}",
+                    "" if o["cost"] is None else f"{o['cost']:.6f}",
+                    dry,
+                ]
+            )
             for key, values in (("category", CATEGORIES), ("language", LANGUAGES), ("difficulty", DIFFICULTIES)):
                 for v in values:
                     sub = [r for r in rs if r[key] == v]
                     if not sub:
                         continue
                     e = analysis.est(sub)
-                    writer.writerow([p, o["harness"], o["model"], key, v, len(sub), len({r["task_id"] for r in sub}),
-                                     f"{e.value:.4f}", f"{e.low:.4f}", f"{e.high:.4f}", "",
-                                     f"{_mean(float(r.get('task_score') or 0) for r in sub):.4f}",
-                                     f"{_mean(r.get('steps') or 0 for r in sub):.2f}", "", dry])
+                    writer.writerow(
+                        [
+                            p,
+                            o["harness"],
+                            o["model"],
+                            key,
+                            v,
+                            len(sub),
+                            len({r["task_id"] for r in sub}),
+                            f"{e.value:.4f}",
+                            f"{e.low:.4f}",
+                            f"{e.high:.4f}",
+                            "",
+                            f"{_mean(float(r.get('task_score') or 0) for r in sub):.4f}",
+                            f"{_mean(r.get('steps') or 0 for r in sub):.2f}",
+                            "",
+                            dry,
+                        ]
+                    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -483,8 +634,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     records, dry = select(load_runs(sources), args.include_dry)
     if not dry:
-        sources = [s for s in sources if any(not json.loads(line).get("dry_run")
-                                             for line in s.read_text().splitlines()[:1] if line.strip())]
+        sources = [
+            s
+            for s in sources
+            if any(not json.loads(line).get("dry_run") for line in s.read_text().splitlines()[:1] if line.strip())
+        ]
     cfg = run_config()
     analysis = Analysis(records, cfg.bootstrap_samples, cfg.seed)
     if not analysis.records:

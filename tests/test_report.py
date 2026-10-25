@@ -6,18 +6,47 @@ from analysis.report import main as report_main
 
 def make_record(participant, task, run, passed, category="bug_fix", language="python", dry=False, cost=0.1, **kw):
     record = {
-        "run_id": "run-test", "dry_run": dry, "task_id": task, "category": category, "language": language,
-        "difficulty": "easy", "model": participant, "participant": participant, "harness": "shared-loop",
-        "provider": "anthropic", "run_index": run, "status": "ok", "primary_pass": int(passed),
-        "task_score": 1.0 if passed else 0.0, "rubric_score": 1.0 if passed else 0.0, "penalty": 0.0,
-        "steps": 10, "cost_usd": cost, "judge_cost_usd": 0.01, "negative_checks": [],
-        "rubric": [{"id": "r", "grader": "judge", "weight": 1, "verdict": "pass" if passed else "fail",
-                    "rationale": "because", "judge_model": "j",
-                    "cross_check": {"verdict": "pass" if passed else "fail"}}],
+        "run_id": "run-test",
+        "dry_run": dry,
+        "task_id": task,
+        "category": category,
+        "language": language,
+        "difficulty": "easy",
+        "model": participant,
+        "participant": participant,
+        "harness": "shared-loop",
+        "provider": "anthropic",
+        "run_index": run,
+        "status": "ok",
+        "primary_pass": int(passed),
+        "task_score": 1.0 if passed else 0.0,
+        "rubric_score": 1.0 if passed else 0.0,
+        "penalty": 0.0,
+        "steps": 10,
+        "cost_usd": cost,
+        "judge_cost_usd": 0.01,
+        "negative_checks": [],
+        "rubric": [
+            {
+                "id": "r",
+                "grader": "judge",
+                "weight": 1,
+                "verdict": "pass" if passed else "fail",
+                "rationale": "because",
+                "judge_model": "j",
+                "cross_check": {"verdict": "pass" if passed else "fail"},
+            }
+        ],
         "diff": "" if not passed and run == 0 else "diff --git a/src/x.py b/src/x.py\n+++ b/src/x.py\n+x = 1\n",
         "stop_reason": "submitted",
-        "primary": {"type": "hidden_tests", "details": {"fail_to_pass": {"t": "passed" if passed else "failed"},
-                                                         "suite": {}, "pass_to_pass": {"failures": {}}}},
+        "primary": {
+            "type": "hidden_tests",
+            "details": {
+                "fail_to_pass": {"t": "passed" if passed else "failed"},
+                "suite": {},
+                "pass_to_pass": {"failures": {}},
+            },
+        },
         "harness_commit": "abc123",
     }
     record.update(kw)
@@ -32,9 +61,16 @@ def test_report_numbers_come_from_runs(tmp_path):
     records = []
     for t in range(6):
         for run in range(3):
-            records.append(make_record("model-a", f"bf_00{t}_x", run, passed=t < 3,
-                                       category=["bug_fix", "code_review"][t % 2],
-                                       language=["python", "typescript"][t % 2]))
+            records.append(
+                make_record(
+                    "model-a",
+                    f"bf_00{t}_x",
+                    run,
+                    passed=t < 3,
+                    category=["bug_fix", "code_review"][t % 2],
+                    language=["python", "typescript"][t % 2],
+                )
+            )
             records.append(make_record("model-b", f"bf_00{t}_x", run, passed=(t == 0 and run < 2)))
     runs = tmp_path / "runs.jsonl"
     write(runs, records)

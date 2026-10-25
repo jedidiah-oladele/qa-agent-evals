@@ -56,8 +56,14 @@ def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def bootstrap(clusters: dict[str, list[float]], statistic: Callable[[list[list[float]]], float], *,
-              samples: int = 10_000, seed: int = 0, alpha: float = 0.05) -> Estimate:
+def bootstrap(
+    clusters: dict[str, list[float]],
+    statistic: Callable[[list[list[float]]], float],
+    *,
+    samples: int = 10_000,
+    seed: int = 0,
+    alpha: float = 0.05,
+) -> Estimate:
     """Percentile CI of ``statistic`` over task clusters resampled with replacement."""
     groups = list(clusters.values())
     if not groups:
@@ -85,8 +91,9 @@ def mean_score(clusters: dict[str, list[float]], **kw) -> Estimate:
     return pass_at_1(clusters, **kw)
 
 
-def paired_difference(a: dict[str, list[float]], b: dict[str, list[float]], *, samples: int = 10_000,
-                      seed: int = 0) -> Estimate:
+def paired_difference(
+    a: dict[str, list[float]], b: dict[str, list[float]], *, samples: int = 10_000, seed: int = 0
+) -> Estimate:
     """CI for pass@1(a) - pass@1(b) over tasks both participants ran (paired by task)."""
     shared = sorted(set(a) & set(b))
     diffs = {t: [_mean(a[t]) - _mean(b[t])] for t in shared}

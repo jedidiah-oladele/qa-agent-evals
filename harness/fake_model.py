@@ -22,12 +22,12 @@ import hashlib
 import json
 import shutil
 
+from graders.diffparse import is_test_path, parse_diff
+
 from .config import AgentModel
 from .models import ModelAdapter, ModelError, ModelTurn, ToolCall, ToolSpec, Usage
 from .task import Task
 from .workspace import apply_patch, build_workspace
-
-from graders.diffparse import is_test_path, parse_diff
 
 
 def _pick(task_id: str, run_index: int, salt: str, modulo: int) -> int:
@@ -84,37 +84,57 @@ class FakeModel(ModelAdapter):
         return calls
 
     def _finish(self, summary: str) -> list[ToolCall]:
-        return [ToolCall("fake-test", "run_command", {"command": self.task.test_cmd, "timeout_s": 300}),
-                ToolCall("fake-submit", "submit", {"summary": summary})]
+        return [
+            ToolCall("fake-test", "run_command", {"command": self.task.test_cmd, "timeout_s": 300}),
+            ToolCall("fake-submit", "submit", {"summary": summary}),
+        ]
 
     def _build_script(self) -> tuple[str, list[ToolCall]]:
         behaviour = self.spec.behaviour
         task = self.task
         if behaviour == "oracle":
-            return "reference", [*self._explore(), *_patch_as_writes(task, self._read(task.reference)),
-                                 *self._finish("[fake-oracle] applied the reference solution")]
+            return "reference", [
+                *self._explore(),
+                *_patch_as_writes(task, self._read(task.reference)),
+                *self._finish("[fake-oracle] applied the reference solution"),
+            ]
         if behaviour == "mixed":
             bucket = _pick(task.id, self.run_index, "mixed", 8)
             if bucket == 7:
                 return "simulated_outage", [*self._explore()]
             if bucket <= 3:
-                return "reference", [*self._explore(), *_patch_as_writes(task, self._read(task.reference)),
-                                     *self._finish("[fake-mixed] applied the reference solution")]
+                return "reference", [
+                    *self._explore(),
+                    *_patch_as_writes(task, self._read(task.reference)),
+                    *self._finish("[fake-mixed] applied the reference solution"),
+                ]
             choice = 2 if bucket <= 5 else 3
             if choice == 2:
                 flawed = task.flawed[_pick(task.id, self.run_index, "flawed", len(task.flawed))]
-                return f"flawed:{flawed}", [*self._explore(), *_patch_as_writes(task, self._read(flawed)),
-                                            *self._finish(f"[fake-mixed] applied {flawed}")]
-            return "give_up", [*self._explore(), ToolCall("fake-submit", "submit",
-                                                          {"summary": "[fake-mixed] gave up without changes"})]
+                return f"flawed:{flawed}", [
+                    *self._explore(),
+                    *_patch_as_writes(task, self._read(flawed)),
+                    *self._finish(f"[fake-mixed] applied {flawed}"),
+                ]
+            return "give_up", [
+                *self._explore(),
+                ToolCall("fake-submit", "submit", {"summary": "[fake-mixed] gave up without changes"}),
+            ]
         if behaviour == "cheater":
             peek = [
                 ToolCall("fake-peek-1", "read_file", {"path": f"../../tasks/{task.id}/hidden_tests"}),
-                ToolCall("fake-peek-2", "run_command",
-                         {"command": f"ls /workspace/*/tasks/{task.id}/hidden_tests 2>&1 || true"}),
+                ToolCall(
+                    "fake-peek-2",
+                    "run_command",
+                    {"command": f"ls /workspace/*/tasks/{task.id}/hidden_tests 2>&1 || true"},
+                ),
             ]
-            return "cheat", [*peek, *_patch_as_writes(task, self._read(task.reference)), *self._cheat_calls(),
-                             *self._finish("[fake-cheater] made the tests pass")]
+            return "cheat", [
+                *peek,
+                *_patch_as_writes(task, self._read(task.reference)),
+                *self._cheat_calls(),
+                *self._finish("[fake-cheater] made the tests pass"),
+            ]
         raise ValueError(f"unknown fake behaviour {behaviour!r}")
 
     def _cheat_calls(self) -> list[ToolCall]:
@@ -122,8 +142,11 @@ class FakeModel(ModelAdapter):
         workspace = build_workspace(self.task, agent_git=False, label="fake-cheat")
         try:
             tests_dir = workspace.root / "tests"
-            candidates = sorted(p for p in tests_dir.rglob("*") if p.is_file() and is_test_path(
-                str(p.relative_to(workspace.root))) and p.suffix in (".py", ".ts"))
+            candidates = sorted(
+                p
+                for p in tests_dir.rglob("*")
+                if p.is_file() and is_test_path(str(p.relative_to(workspace.root))) and p.suffix in (".py", ".ts")
+            )
             if not candidates:
                 return []
             victim = candidates[_pick(self.task.id, self.run_index, "victim", len(candidates))]
@@ -139,8 +162,9 @@ class FakeModel(ModelAdapter):
 
     def next_turn(self, system: str, tools: list[ToolSpec], messages: list[dict]) -> ModelTurn:
         if self.plan_label == "simulated_outage" and self._position >= len(self.script):
-            raise ModelError("[simulated by fake-mixed] 529 overloaded: provider still failing after 6 retries",
-                             kind="api")
+            raise ModelError(
+                "[simulated by fake-mixed] 529 overloaded: provider still failing after 6 retries", kind="api"
+            )
         prompt_chars = len(system) + sum(len(json.dumps(m, default=str)) for m in messages)
         if self._position >= len(self.script):
             return ModelTurn("[fake] nothing left to do", [], Usage(prompt_chars // 4, 10), "end_turn")

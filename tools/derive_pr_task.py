@@ -43,8 +43,17 @@ def _diff_dirs(before: Path, after: Path, paths: list[str]) -> str:
     for relative in paths:
         a, b = before / relative, after / relative
         result = subprocess.run(
-            ["git", "diff", "--no-index", "--no-color", str(a) if a.exists() else "/dev/null",
-             str(b) if b.exists() else "/dev/null"], capture_output=True, text=True)
+            [
+                "git",
+                "diff",
+                "--no-index",
+                "--no-color",
+                str(a) if a.exists() else "/dev/null",
+                str(b) if b.exists() else "/dev/null",
+            ],
+            capture_output=True,
+            text=True,
+        )
         text = result.stdout
         if not text:
             continue
@@ -112,8 +121,13 @@ def derive(library: str, pr: int, task_id: str, difficulty: str, language: str) 
             "test_cmd": "pytest -q" if language == "python" else "npx vitest run",
             "primary": {"type": "hidden_tests", "fail_to_pass": ["TODO"], "pass_to_pass": ["tests/"]},
             "rubric": [],
-            "negative_checks": ["no_hidden_test_access", "no_test_deletion", "no_skip_or_xfail",
-                                "no_hardcoded_expected_values", "no_network"],
+            "negative_checks": [
+                "no_hidden_test_access",
+                "no_test_deletion",
+                "no_skip_or_xfail",
+                "no_hardcoded_expected_values",
+                "no_network",
+            ],
             "limits": {"max_steps": 40, "timeout_s": 900},
             "reference": "reference.patch",
             "flawed": [],

@@ -30,9 +30,17 @@ class RubricResult:
     cross_check: dict | None = None
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "grader": self.grader, "weight": self.weight, "verdict": self.verdict,
-                "rationale": self.rationale, "judge_model": self.judge_model, "cost_usd": self.cost_usd,
-                "tokens": self.tokens, "cross_check": self.cross_check}
+        return {
+            "id": self.id,
+            "grader": self.grader,
+            "weight": self.weight,
+            "verdict": self.verdict,
+            "rationale": self.rationale,
+            "judge_model": self.judge_model,
+            "cost_usd": self.cost_usd,
+            "tokens": self.tokens,
+            "cross_check": self.cross_check,
+        }
 
 
 @dataclass
@@ -96,8 +104,16 @@ def grade_rubric(ctx: GradeContext, judges: JudgeSetup | None, *, key: tuple = (
             results.append(RubricResult(item.id, "judge", item.weight, "skipped", "judge not run"))
             continue
         verdict: Verdict = judge_item(judges.primary, judges.primary_pricing, ctx.task, item, ctx.diff, ctx.artifacts)
-        result = RubricResult(item.id, "judge", item.weight, verdict.verdict, verdict.rationale, verdict.model,
-                              verdict.cost_usd, verdict.usage.total)
+        result = RubricResult(
+            item.id,
+            "judge",
+            item.weight,
+            verdict.verdict,
+            verdict.rationale,
+            verdict.model,
+            verdict.cost_usd,
+            verdict.usage.total,
+        )
         if judges.cross is not None and cross_check_selected(judges.seed, judges.cross_rate, *key, item.id):
             second = judge_item(judges.cross, judges.cross_pricing, ctx.task, item, ctx.diff, ctx.artifacts)
             result.cross_check = second.to_dict()
@@ -105,14 +121,22 @@ def grade_rubric(ctx: GradeContext, judges: JudgeSetup | None, *, key: tuple = (
     return results
 
 
-def grade_submission(task: Task, diff: str, trajectory: list[dict] | None = None, *,
-                     backend: Literal["docker", "local"] = "local", judges: JudgeSetup | None = None,
-                     artifacts: dict[str, str] | None = None, config: RunConfig | None = None,
-                     key: tuple = ()) -> GradeResult:
+def grade_submission(
+    task: Task,
+    diff: str,
+    trajectory: list[dict] | None = None,
+    *,
+    backend: Literal["docker", "local"] = "local",
+    judges: JudgeSetup | None = None,
+    artifacts: dict[str, str] | None = None,
+    config: RunConfig | None = None,
+    key: tuple = (),
+) -> GradeResult:
     ctx = GradeContext(task, diff, trajectory or [], backend, config or run_config(), artifacts or {})
     primary = grade_primary(ctx)
     rubric = grade_rubric(ctx, judges, key=key)
     checks = run_checks(task, diff, trajectory or [], visible_test_sources=visible_test_sources(task))
-    score = task_score(primary.passed, rubric_score([(r.weight, r.verdict) for r in rubric]),
-                       sum(1 for c in checks if not c.passed))
+    score = task_score(
+        primary.passed, rubric_score([(r.weight, r.verdict) for r in rubric]), sum(1 for c in checks if not c.passed)
+    )
     return GradeResult(primary, rubric, checks, score, ctx.artifacts)

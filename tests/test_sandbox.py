@@ -24,8 +24,10 @@ def workspace(tmp_path):
     return root
 
 
-@pytest.mark.parametrize("isolation", ["none", pytest.param("bwrap", marks=pytest.mark.skipif(
-    not bwrap_available(), reason="bubblewrap not usable"))])
+@pytest.mark.parametrize(
+    "isolation",
+    ["none", pytest.param("bwrap", marks=pytest.mark.skipif(not bwrap_available(), reason="bubblewrap not usable"))],
+)
 def test_local_exec_basics(workspace, isolation):
     sandbox = LocalSandbox(workspace, isolation=isolation)
     result = sandbox.exec("cat hello.txt && echo err >&2 && exit 3", timeout_s=20)
@@ -107,8 +109,9 @@ def test_docker_sandbox_isolation(py_task):
             hidden = next(py_task.hidden_tests_dir.rglob("*.py"))
             leak = sandbox.exec(f"cat {hidden}", timeout_s=30)
             assert leak.exit_code != 0
-            net = sandbox.exec("python -c \"import socket; socket.create_connection(('1.1.1.1', 53), timeout=3)\"",
-                               timeout_s=30)
+            net = sandbox.exec(
+                "python -c \"import socket; socket.create_connection(('1.1.1.1', 53), timeout=3)\"", timeout_s=30
+            )
             assert net.exit_code != 0
             assert sandbox.exec("sleep 20", timeout_s=2).timed_out
         finally:

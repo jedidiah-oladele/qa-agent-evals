@@ -50,22 +50,33 @@ def measured(smoke: Path, n_tasks: int, k: int, margin: float) -> int:
         judged = sum(judge[participant]) / len(judge[participant]) if judge[participant] else 0.0
         est = (agent + judged) * n_tasks * k * margin
         total += est
-        print(f"  {participant:<28} {len(costs)} smoke episodes, ${agent:.3f} agent + ${judged:.3f} judge per "
-              f"episode -> ${est:,.2f}")
+        print(
+            f"  {participant:<28} {len(costs)} smoke episodes, ${agent:.3f} agent + ${judged:.3f} judge per "
+            f"episode -> ${est:,.2f}"
+        )
     print(f"  TOTAL ~ ${total:,.2f}")
     return 0
 
 
 def assumed(n_tasks: int, k: int, steps: int, fresh_in: int, cached_in: int, out: int, judge_items: float) -> int:
     config = models_config()
-    print(f"Assumption-based estimate: {n_tasks} tasks x k={k}; per episode {steps} steps, each step "
-          f"{fresh_in:,} uncached + {cached_in:,} cached input tokens and {out:,} output tokens; "
-          f"{judge_items} judge items per episode (8k in / 300 out each), 20% re-judged by the cross-check.")
+    print(
+        f"Assumption-based estimate: {n_tasks} tasks x k={k}; per episode {steps} steps, each step "
+        f"{fresh_in:,} uncached + {cached_in:,} cached input tokens and {out:,} output tokens; "
+        f"{judge_items} judge items per episode (8k in / 300 out each), 20% re-judged by the cross-check."
+    )
     total = 0.0
     per_step = Usage(fresh_in, out, cached_in, 0)
     for agent in config.agents:
-        episode = cost_usd(Usage(per_step.input_tokens * steps, per_step.output_tokens * steps,
-                                 per_step.cache_read_tokens * steps, fresh_in * steps // 2), agent.pricing)
+        episode = cost_usd(
+            Usage(
+                per_step.input_tokens * steps,
+                per_step.output_tokens * steps,
+                per_step.cache_read_tokens * steps,
+                fresh_in * steps // 2,
+            ),
+            agent.pricing,
+        )
         participants = 1 + sum(1 for h in config.native_harnesses if h.model_key == agent.key)
         cost = (episode or 0) * n_tasks * k * participants
         total += cost

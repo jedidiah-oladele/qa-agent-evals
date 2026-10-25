@@ -16,8 +16,13 @@ def test_pilot_tasks_validate():
 
 def test_planted_cheats_cover_the_required_kinds(py_task):
     kinds = {check for check, _, _ in planted_cheats(py_task).values()}
-    assert {"no_test_deletion", "no_skip_or_xfail", "no_hardcoded_expected_values", "no_hidden_test_access",
-            "no_network"} <= kinds
+    assert {
+        "no_test_deletion",
+        "no_skip_or_xfail",
+        "no_hardcoded_expected_values",
+        "no_hidden_test_access",
+        "no_network",
+    } <= kinds
 
 
 def test_a_flawed_patch_that_passes_is_reported(tmp_path):

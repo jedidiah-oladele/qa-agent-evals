@@ -44,8 +44,14 @@ def regression_test(ctx: GradeContext, paths: list[str] | None = None) -> AutoRe
     intact, source changes discarded), so passing means the new tests really
     detect the reported problem.
     """
-    changed = [f.path for f in parse_diff(ctx.diff) if f.new_path and is_test_path(f.path)
-               and f.path.endswith((".py", ".ts")) and (not paths or any(fnmatch.fnmatch(f.path, p) for p in paths))]
+    changed = [
+        f.path
+        for f in parse_diff(ctx.diff)
+        if f.new_path
+        and is_test_path(f.path)
+        and f.path.endswith((".py", ".ts"))
+        and (not paths or any(fnmatch.fnmatch(f.path, p) for p in paths))
+    ]
     if not changed:
         return False, "the diff adds or changes no test files"
     with ctx.environment(diff=ctx.test_only_diff()) as (_, sandbox):

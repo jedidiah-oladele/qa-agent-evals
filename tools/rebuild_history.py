@@ -94,9 +94,20 @@ def rebuild(lib: str, dest: Path | None = None) -> Path:
     env = _env()
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=dest, check=True, env=env)
     subprocess.run(
-        ["git", "-c", "user.name=x", "-c", "user.email=x@x", "am", "-q", "--committer-date-is-author-date",
-         *[str(p) for p in patch_series(lib)]],
-        cwd=dest, check=True, env=env,
+        [
+            "git",
+            "-c",
+            "user.name=x",
+            "-c",
+            "user.email=x@x",
+            "am",
+            "-q",
+            "--committer-date-is-author-date",
+            *[str(p) for p in patch_series(lib)],
+        ],
+        cwd=dest,
+        check=True,
+        env=env,
     )
     return dest
 
@@ -134,8 +145,10 @@ def main(argv: list[str] | None = None) -> int:
             ok = False
             print(f"{lib}: {count} commits replayed, but tree differs from target/{lib}: {diffs}")
         else:
-            print(f"{lib}: {count} commits replayed into {dest.relative_to(REPO)} (HEAD {head.stdout.strip()}), "
-                  f"tree matches target/{lib}")
+            print(
+                f"{lib}: {count} commits replayed into {dest.relative_to(REPO)} (HEAD {head.stdout.strip()}), "
+                f"tree matches target/{lib}"
+            )
     return 0 if ok else 1
 
 

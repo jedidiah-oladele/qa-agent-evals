@@ -36,8 +36,9 @@ def _masked_terms() -> list[str]:
     return sorted(terms, key=len, reverse=True)
 
 
-_VENDOR = re.compile(r"\b(claude(?: code)?|anthropic|openai|chatgpt|gpt-?\d[\w.-]*|codex|opus|sonnet|gemini)\b",
-                     re.IGNORECASE)
+_VENDOR = re.compile(
+    r"\b(claude(?: code)?|anthropic|openai|chatgpt|gpt-?\d[\w.-]*|codex|opus|sonnet|gemini)\b", re.IGNORECASE
+)
 
 
 def blind(text: str) -> str:
@@ -47,8 +48,11 @@ def blind(text: str) -> str:
 
 
 def build_judge_prompt(task: Task, item: RubricItem, diff: str, artifacts: dict[str, str]) -> str:
-    shown = diff if len(diff) <= MAX_DIFF_CHARS else (
-        diff[:MAX_DIFF_CHARS] + f"\n[diff truncated: {len(diff) - MAX_DIFF_CHARS} more characters not shown]")
+    shown = (
+        diff
+        if len(diff) <= MAX_DIFF_CHARS
+        else (diff[:MAX_DIFF_CHARS] + f"\n[diff truncated: {len(diff) - MAX_DIFF_CHARS} more characters not shown]")
+    )
     parts = [
         "## Task given to the engineer\n" + task.prompt.strip(),
         "## Criterion to grade\n" + item.criterion.strip(),
@@ -69,8 +73,13 @@ class Verdict:
     cost_usd: float | None = 0.0
 
     def to_dict(self) -> dict:
-        return {"verdict": self.verdict, "rationale": self.rationale, "model": self.model,
-                "usage": self.usage.to_dict(), "cost_usd": self.cost_usd}
+        return {
+            "verdict": self.verdict,
+            "rationale": self.rationale,
+            "model": self.model,
+            "usage": self.usage.to_dict(),
+            "cost_usd": self.cost_usd,
+        }
 
 
 def parse_verdict(text: str) -> tuple[str, str]:
@@ -106,8 +115,14 @@ class LLMJudge:
         self._complete = complete_text
 
     def judge(self, system: str, prompt: str) -> tuple[str, Usage]:
-        return self._complete(self.spec.provider, self.spec.model_id, system, prompt,
-                              max_tokens=self.spec.max_output_tokens, client=self._client)
+        return self._complete(
+            self.spec.provider,
+            self.spec.model_id,
+            system,
+            prompt,
+            max_tokens=self.spec.max_output_tokens,
+            client=self._client,
+        )
 
 
 class FakeJudge:
@@ -129,8 +144,15 @@ class FakeJudge:
     def judge(self, system: str, prompt: str) -> tuple[str, Usage]:
         criterion = prompt.split("## Criterion to grade\n", 1)[-1].split("\n## ", 1)[0].lower()
         evidence = prompt.split("## Final diff\n", 1)[-1].lower()
-        words = {w for w in re.findall(r"[a-z_]{6,}", criterion)} - {"should", "explains", "change", "changes",
-                                                                       "explain", "states", "correctly"}
+        words = {w for w in re.findall(r"[a-z_]{6,}", criterion)} - {
+            "should",
+            "explains",
+            "change",
+            "changes",
+            "explain",
+            "states",
+            "correctly",
+        }
         has_evidence = "(no changes)" not in evidence
         verdict = "pass" if has_evidence and any(w in evidence for w in words) else "fail"
         digest = int(hashlib.sha256((self.model + prompt).encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
@@ -140,13 +162,18 @@ class FakeJudge:
             return "[dry-run fake judge: simulated malformed reply]", Usage(len(prompt) // 4, 10)
         if digest < self.disagree_rate:
             verdict = "fail" if verdict == "pass" else "pass"
-        reply = json.dumps({"verdict": verdict, "rationale": f"[dry-run fake judge {self.model}: keyword "
-                                                              f"heuristic, not an LLM verdict]"})
+        reply = json.dumps(
+            {
+                "verdict": verdict,
+                "rationale": f"[dry-run fake judge {self.model}: keyword heuristic, not an LLM verdict]",
+            }
+        )
         return reply, Usage(input_tokens=len(prompt) // 4, output_tokens=40)
 
 
-def judge_item(judge: Judge, spec_pricing, task: Task, item: RubricItem, diff: str,
-               artifacts: dict[str, str]) -> Verdict:
+def judge_item(
+    judge: Judge, spec_pricing, task: Task, item: RubricItem, diff: str, artifacts: dict[str, str]
+) -> Verdict:
     prompt = build_judge_prompt(task, item, diff, artifacts)
     try:
         reply, usage = judge.judge(JUDGE_SYSTEM, prompt)

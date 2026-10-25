@@ -35,9 +35,14 @@ class PrimaryResult:
     duration_s: float = 0.0
 
     def to_dict(self) -> dict:
-        return {"passed": self.passed, "type": self.type, "details": self.details,
-                "environment_error": self.environment_error, "grader_error": self.grader_error,
-                "duration_s": round(self.duration_s, 2)}
+        return {
+            "passed": self.passed,
+            "type": self.type,
+            "details": self.details,
+            "environment_error": self.environment_error,
+            "grader_error": self.grader_error,
+            "duration_s": round(self.duration_s, 2),
+        }
 
 
 def expand(patterns: list[str], test_ids: list[str]) -> tuple[list[str], list[str]]:
@@ -67,8 +72,14 @@ def evaluate_hidden(report: TestReport, fail_to_pass: list[str], pass_to_pass: l
     p2p_ids, p2p_unmatched = expand(pass_to_pass, ids)
     p2p_ids = [t for t in p2p_ids if t not in f2p]
     p2p_failures = {t: report.outcomes[t] for t in p2p_ids if not report.passed(t)}
-    passed = (all(o == "passed" for o in f2p.values()) and not p2p_failures and not p2p_unmatched
-              and not report.timed_out and report.runner_error is None and not report.collection_errors)
+    passed = (
+        all(o == "passed" for o in f2p.values())
+        and not p2p_failures
+        and not p2p_unmatched
+        and not report.timed_out
+        and report.runner_error is None
+        and not report.collection_errors
+    )
     details = {
         "fail_to_pass": f2p,
         "pass_to_pass": {"checked": len(p2p_ids), "failures": p2p_failures, "unmatched": p2p_unmatched},
@@ -118,8 +129,11 @@ def grade_mutation(ctx: GradeContext) -> PrimaryResult:
                 apply_patch(workspace.root, patch, reverse=True)
             is_killed = not report.all_green
             killed += is_killed
-            details["mutants"][mutant] = {"killed": is_killed, "failing": report.failing[:5],
-                                          "timed_out": report.timed_out}
+            details["mutants"][mutant] = {
+                "killed": is_killed,
+                "failing": report.failing[:5],
+                "timed_out": report.timed_out,
+            }
     rate = killed / len(task.mutants)
     details["kill_rate"] = round(rate, 3)
     details["required"] = primary.min_mutant_kill_rate
@@ -135,9 +149,17 @@ def grade_repeated_runs(ctx: GradeContext) -> PrimaryResult:
             seed = 1000 + i
             env = {"TZ": zones[i % len(zones)], "PYTHONHASHSEED": str(i + 1)}
             report = run_tests(sandbox, task.language, shuffle_seed=seed, env=env, timeout_s=300)
-            runs.append({"run": i, "seed": seed, "tz": env["TZ"], "green": report.all_green,
-                         "failing": report.failing[:5], "collection_errors": sorted(report.collection_errors)[:3],
-                         "tests": len(report.outcomes)})
+            runs.append(
+                {
+                    "run": i,
+                    "seed": seed,
+                    "tz": env["TZ"],
+                    "green": report.all_green,
+                    "failing": report.failing[:5],
+                    "collection_errors": sorted(report.collection_errors)[:3],
+                    "tests": len(report.outcomes),
+                }
+            )
     failed = [r for r in runs if not r["green"]]
     details = {"runs": len(runs), "failed_runs": len(failed), "failures": failed[:8]}
     return PrimaryResult(bool(runs) and not failed, "repeated_runs", details)
@@ -169,8 +191,9 @@ def grade_primary(ctx: GradeContext) -> PrimaryResult:
     try:
         result = grader(ctx)
     except PatchError as exc:
-        result = PrimaryResult(False, ctx.task.primary.type, {"reason": "submission diff did not apply"},
-                               grader_error=str(exc))
+        result = PrimaryResult(
+            False, ctx.task.primary.type, {"reason": "submission diff did not apply"}, grader_error=str(exc)
+        )
     except SandboxError as exc:
         result = PrimaryResult(False, ctx.task.primary.type, {}, environment_error=str(exc))
     result.duration_s = time.monotonic() - start

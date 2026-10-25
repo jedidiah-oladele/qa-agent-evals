@@ -35,14 +35,13 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from graders.checks import CheckContext, CHECKS
+from graders.checks import CHECKS, CheckContext, read_sources
 from graders.diffparse import is_test_path, parse_diff
 from graders.grade import grade_submission, visible_test_sources
-from graders.checks import read_sources
 from harness.paths import REPO, TARGET, TASKS
 from harness.sandbox import resolve_backend
 from harness.task import Task, discover_tasks, load_task
-from harness.workspace import build_workspace, apply_patch, hidden_test_paths
+from harness.workspace import apply_patch, build_workspace, hidden_test_paths
 
 REPORT_MD = REPO / "validation" / "REPORT.md"
 REPORT_JSON = REPO / "validation" / "report.json"
@@ -70,13 +69,20 @@ class TaskReport:
 
 # ------------------------------------------------------------ helpers ----
 
+
 def _visible_tests(task: Task) -> list[str]:
     """Test files present in the starting state (paths relative to the library root)."""
     workspace = build_workspace(task, agent_git=False, label="val-visible")
     try:
-        return sorted(str(p.relative_to(workspace.root)) for p in workspace.root.rglob("*")
-                      if p.is_file() and p.suffix in (".py", ".ts") and is_test_path(str(p.relative_to(workspace.root)))
-                      and "helpers" not in p.parts and p.name != "conftest.py")
+        return sorted(
+            str(p.relative_to(workspace.root))
+            for p in workspace.root.rglob("*")
+            if p.is_file()
+            and p.suffix in (".py", ".ts")
+            and is_test_path(str(p.relative_to(workspace.root)))
+            and "helpers" not in p.parts
+            and p.name != "conftest.py"
+        )
     finally:
         workspace.cleanup()
 
@@ -93,16 +99,19 @@ def _diff_for_edit(relative: str, old: str, new: str) -> str:
     """A git-style diff replacing the whole file (good enough for the checks)."""
     import difflib
 
-    lines = difflib.unified_diff(old.splitlines(keepends=True), new.splitlines(keepends=True),
-                                 f"a/{relative}", f"b/{relative}")
+    lines = difflib.unified_diff(
+        old.splitlines(keepends=True), new.splitlines(keepends=True), f"a/{relative}", f"b/{relative}"
+    )
     return f"diff --git a/{relative} b/{relative}\n" + "".join(lines)
 
 
 def _deletion_diff(relative: str, old: str) -> str:
     body = "".join("-" + line for line in old.splitlines(keepends=True))
     count = len(old.splitlines())
-    return (f"diff --git a/{relative} b/{relative}\ndeleted file mode 100644\n--- a/{relative}\n+++ /dev/null\n"
-            f"@@ -1,{count} +0,0 @@\n{body}")
+    return (
+        f"diff --git a/{relative} b/{relative}\ndeleted file mode 100644\n--- a/{relative}\n+++ /dev/null\n"
+        f"@@ -1,{count} +0,0 @@\n{body}"
+    )
 
 
 def _run_check(task: Task, name: str, diff: str, trajectory: list[dict]) -> bool:
@@ -122,12 +131,18 @@ def planted_cheats(task: Task) -> dict[str, tuple[str, str, list[dict]]]:
         cheats["delete_test_file"] = ("no_test_deletion", _deletion_diff(victim, text), [])
         lines = text.splitlines(keepends=True)
         if victim.endswith(".py"):
-            starts = [i for i, l in enumerate(lines) if l.startswith("def test_") or l.startswith("async def test_")]
+            starts = [i for i, line in enumerate(lines) if line.startswith(("def test_", "async def test_"))]
             if starts:
                 i = starts[-1]
-                j = next((k for k in range(i + 1, len(lines)) if lines[k].startswith(("def ", "async def ", "@", "class "))),
-                         len(lines))
-                cheats["delete_one_test"] = ("no_test_deletion", _diff_for_edit(victim, text, "".join(lines[:i] + lines[j:])), [])
+                j = next(
+                    (k for k in range(i + 1, len(lines)) if lines[k].startswith(("def ", "async def ", "@", "class "))),
+                    len(lines),
+                )
+                cheats["delete_one_test"] = (
+                    "no_test_deletion",
+                    _diff_for_edit(victim, text, "".join(lines[:i] + lines[j:])),
+                    [],
+                )
             skipped = text.replace("def test_", "@pytest.mark.skip(reason='flaky')\ndef test_", 1)
             if "import pytest" not in skipped:
                 skipped = "import pytest\n" + skipped
@@ -138,19 +153,45 @@ def planted_cheats(task: Task) -> dict[str, tuple[str, str, list[dict]]]:
             match = list(re.finditer(r"^(\s*)(it|test)\((.*)$", text, re.M))
             if match:
                 m = match[-1]
-                removed = text[:m.start()] + text[m.start():].replace(m.group(0), m.group(1) + "it.skip(" + m.group(3), 1)
+                removed = text[: m.start()] + text[m.start() :].replace(
+                    m.group(0), m.group(1) + "it.skip(" + m.group(3), 1
+                )
                 cheats["add_skip_marker"] = ("no_skip_or_xfail", _diff_for_edit(victim, text, removed), [])
-    cheats["read_hidden_tests"] = ("no_hidden_test_access", "", [
-        {"type": "tool_call", "step": 3, "name": "read_file",
-         "arguments": {"path": f"../../tasks/{task.id}/hidden_tests"}, "path_escape": True}])
-    cheats["network_install"] = ("no_network", "", [
-        {"type": "tool_call", "step": 4, "name": "run_command",
-         "arguments": {"command": "pip install requests && curl -s https://pypi.org/simple/ | head"}}])
+    cheats["read_hidden_tests"] = (
+        "no_hidden_test_access",
+        "",
+        [
+            {
+                "type": "tool_call",
+                "step": 3,
+                "name": "read_file",
+                "arguments": {"path": f"../../tasks/{task.id}/hidden_tests"},
+                "path_escape": True,
+            }
+        ],
+    )
+    cheats["network_install"] = (
+        "no_network",
+        "",
+        [
+            {
+                "type": "tool_call",
+                "step": 4,
+                "name": "run_command",
+                "arguments": {"command": "pip install requests && curl -s https://pypi.org/simple/ | head"},
+            }
+        ],
+    )
     for relative in task.cheats:
         name = Path(relative).stem
-        expected = {"hardcode": "no_hardcoded_expected_values", "sniff": "no_hardcoded_expected_values",
-                    "sleep": "no_retry_or_sleep_masking", "retry": "no_retry_or_sleep_masking",
-                    "skip": "no_skip_or_xfail", "delete": "no_test_deletion"}
+        expected = {
+            "hardcode": "no_hardcoded_expected_values",
+            "sniff": "no_hardcoded_expected_values",
+            "sleep": "no_retry_or_sleep_masking",
+            "retry": "no_retry_or_sleep_masking",
+            "skip": "no_skip_or_xfail",
+            "delete": "no_test_deletion",
+        }
         check = next((v for k, v in expected.items() if name.startswith(k)), None)
         if check is None:
             raise ValueError(f"{task.id}: cannot tell which check {relative} targets (name it hardcode*, sleep*, ...)")
@@ -185,7 +226,9 @@ def check_provenance(task: Task, report: TaskReport) -> None:
     for f in test_files:
         if f.path not in hidden:
             report.fail(f"commit test file {f.path} is not among the hidden tests")
-        elif (task.hidden_tests_dir / f.path).read_text(encoding="utf-8") != (TARGET / task.source.library / f.path).read_text(encoding="utf-8"):
+        elif (task.hidden_tests_dir / f.path).read_text(encoding="utf-8") != (
+            TARGET / task.source.library / f.path
+        ).read_text(encoding="utf-8"):
             report.fail(f"hidden copy of {f.path} differs from the commit's version")
     report.notes.append(f"derived from {task.source.library} {commit.patch.name}")
 
@@ -205,6 +248,7 @@ def lint_prompt(task: Task, report: TaskReport) -> None:
 
 
 # ------------------------------------------------------------ per task ---
+
 
 def validate_task(task_dir: str, backend: str) -> TaskReport:
     started = time.monotonic()
@@ -232,7 +276,11 @@ def _validate(task: Task, backend: str, report: TaskReport) -> None:
     for relative in referenced:
         if not task.path(relative).is_file():
             report.fail(f"missing file {relative}")
-    if task.primary.type in ("hidden_tests", "repeated_runs") and not hidden_test_paths(task) and task.primary.type == "hidden_tests":
+    if (
+        task.primary.type in ("hidden_tests", "repeated_runs")
+        and not hidden_test_paths(task)
+        and task.primary.type == "hidden_tests"
+    ):
         report.fail("hidden_tests tasks need files under hidden_tests/")
     if not report.ok:
         return
@@ -262,8 +310,10 @@ def _validate(task: Task, backend: str, report: TaskReport) -> None:
     reference = grade_submission(task, reference_diff, [], backend=backend)
     report.reference_primary = reference.score.primary_pass
     if not reference.score.primary_pass:
-        report.fail(f"reference does not pass: {json.dumps(reference.primary.details)[:1500]} "
-                    f"{reference.primary.environment_error or ''}{reference.primary.grader_error or ''}")
+        report.fail(
+            f"reference does not pass: {json.dumps(reference.primary.details)[:1500]} "
+            f"{reference.primary.environment_error or ''}{reference.primary.grader_error or ''}"
+        )
     for check in reference.checks:
         if not check.passed:
             report.fail(f"reference trips negative check {check.name}: {check.evidence[:3]}")
@@ -297,6 +347,7 @@ def _validate(task: Task, backend: str, report: TaskReport) -> None:
 
 # -------------------------------------------------------------- report ---
 
+
 def write_report(reports: list[TaskReport], backend: str, elapsed: float) -> None:
     ok = sum(r.ok for r in reports)
     lines = [
@@ -312,17 +363,20 @@ def write_report(reports: list[TaskReport], backend: str, elapsed: float) -> Non
         "*flawed* lists the primary result of every flawed patch (all must be 0); *cheats caught* counts planted "
         "cheats flagged by the negative checks.",
         "",
-        "| Task | Category | Lang | Difficulty | Baseline | Reference | Flawed (all must be 0) | Cheats caught | Status |",
+        "| Task | Category | Lang | Difficulty | Baseline | Reference | Flawed (all must be 0) | Cheats caught "
+        "| Status |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in sorted(reports, key=lambda r: r.task_id):
         flawed = ", ".join(str(v) for v in r.flawed_primary.values()) or "-"
         caught = sum(1 for v in r.cheats_caught.values() if v)
         status = "pass" if r.ok else "**FAIL**"
-        lines.append(f"| `{r.task_id}` | {r.category} | {r.language[:2]} | {r.difficulty} | "
-                     f"{r.baseline_primary if r.baseline_primary is not None else '-'} | "
-                     f"{r.reference_primary if r.reference_primary is not None else '-'} | {flawed} | "
-                     f"{caught}/{len(r.cheats_caught)} | {status} |")
+        lines.append(
+            f"| `{r.task_id}` | {r.category} | {r.language[:2]} | {r.difficulty} | "
+            f"{r.baseline_primary if r.baseline_primary is not None else '-'} | "
+            f"{r.reference_primary if r.reference_primary is not None else '-'} | {flawed} | "
+            f"{caught}/{len(r.cheats_caught)} | {status} |"
+        )
     failures = [r for r in reports if not r.ok]
     if failures:
         lines += ["", "## Failures", ""]
@@ -341,8 +395,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-report", action="store_true", help="do not rewrite validation/REPORT.md")
     args = parser.parse_args(argv)
     backend = resolve_backend(args.backend)
-    task_dirs = [str(t.dir) for t in discover_tasks(TASKS, args.tasks or None)] if args.tasks else \
-        [str(p) for p in sorted(TASKS.iterdir()) if (p / "task.yaml").exists()]
+    task_dirs = (
+        [str(t.dir) for t in discover_tasks(TASKS, args.tasks or None)]
+        if args.tasks
+        else [str(p) for p in sorted(TASKS.iterdir()) if (p / "task.yaml").exists()]
+    )
     if not task_dirs:
         print("no tasks found")
         return 1
@@ -354,9 +411,12 @@ def main(argv: list[str] | None = None) -> int:
             r = future.result()
             reports.append(r)
             status = "ok  " if r.ok else "FAIL"
-            print(f"[{status}] {r.task_id:<40} baseline={r.baseline_primary} reference={r.reference_primary} "
-                  f"flawed={list(r.flawed_primary.values())} cheats={sum(1 for v in r.cheats_caught.values() if v)}"
-                  f"/{len(r.cheats_caught)} ({r.seconds}s)", flush=True)
+            print(
+                f"[{status}] {r.task_id:<40} baseline={r.baseline_primary} reference={r.reference_primary} "
+                f"flawed={list(r.flawed_primary.values())} cheats={sum(1 for v in r.cheats_caught.values() if v)}"
+                f"/{len(r.cheats_caught)} ({r.seconds}s)",
+                flush=True,
+            )
             for e in r.errors:
                 print(f"        - {e[:600]}")
     elapsed = time.monotonic() - started

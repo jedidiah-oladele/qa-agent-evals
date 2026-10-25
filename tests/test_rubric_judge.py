@@ -71,8 +71,10 @@ def test_llm_judge_uses_configured_model_and_mock_client(py_task):
 
         def create(self, **body):
             self.body = body
-            return NS(output_text='{"verdict": "pass", "rationale": "uses round_half_up"}',
-                      usage=NS(input_tokens=900, output_tokens=40, input_tokens_details=NS(cached_tokens=0)))
+            return NS(
+                output_text='{"verdict": "pass", "rationale": "uses round_half_up"}',
+                usage=NS(input_tokens=900, output_tokens=40, input_tokens_details=NS(cached_tokens=0)),
+            )
 
     client = Client()
     spec = models_config().judge.primary

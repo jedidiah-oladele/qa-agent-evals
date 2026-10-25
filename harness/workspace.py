@@ -43,8 +43,15 @@ class PatchError(RuntimeError):
     """A patch did not apply cleanly."""
 
 
-def _git(args: list[str], *, cwd: Path | None = None, git_dir: Path | None = None, work_tree: Path | None = None,
-         input_text: str | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _git(
+    args: list[str],
+    *,
+    cwd: Path | None = None,
+    git_dir: Path | None = None,
+    work_tree: Path | None = None,
+    input_text: str | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     cmd = ["git"]
     if git_dir is not None:
         cmd += ["--git-dir", str(git_dir)]
@@ -83,8 +90,11 @@ class Workspace:
     def diff(self) -> str:
         """Unified diff of everything the agent changed relative to the starting state."""
         _git(["add", "-A"], git_dir=self.baseline_git, work_tree=self.root)
-        result = _git(["diff", "--cached", "--binary", "--no-color", "--no-ext-diff", "HEAD"],
-                      git_dir=self.baseline_git, work_tree=self.root)
+        result = _git(
+            ["diff", "--cached", "--binary", "--no-color", "--no-ext-diff", "HEAD"],
+            git_dir=self.baseline_git,
+            work_tree=self.root,
+        )
         _git(["reset", "-q"], git_dir=self.baseline_git, work_tree=self.root)
         return result.stdout
 

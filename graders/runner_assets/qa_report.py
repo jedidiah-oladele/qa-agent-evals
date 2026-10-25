@@ -58,5 +58,6 @@ def pytest_sessionfinish(session, exitstatus):
     if not path:
         return
     with open(path, "w", encoding="utf-8") as handle:
-        json.dump({"outcomes": _outcomes, "collection_errors": _collection_errors, "exitstatus": int(exitstatus)},
-                  handle)
+        json.dump(
+            {"outcomes": _outcomes, "collection_errors": _collection_errors, "exitstatus": int(exitstatus)}, handle
+        )

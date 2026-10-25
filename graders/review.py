@@ -38,8 +38,7 @@ def parse_findings(review: str) -> list[Finding]:
             continue
         start = int(match.group("start"))
         end = int(match.group("end") or start)
-        findings.append(Finding(match.group("file").removeprefix("./"), min(start, end), max(start, end),
-                                line.strip()))
+        findings.append(Finding(match.group("file").removeprefix("./"), min(start, end), max(start, end), line.strip()))
     return findings
 
 
@@ -57,8 +56,12 @@ class ReviewMatch:
     findings: int
 
     def to_dict(self) -> dict:
-        return {"found": self.found, "missed": self.missed, "false_positives": self.false_positives,
-                "findings": self.findings}
+        return {
+            "found": self.found,
+            "missed": self.missed,
+            "false_positives": self.false_positives,
+            "findings": self.findings,
+        }
 
 
 def match_review(review: str, defects: list[ReviewDefect], tolerance: int) -> ReviewMatch:

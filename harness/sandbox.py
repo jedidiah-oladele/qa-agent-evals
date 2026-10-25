@@ -82,8 +82,9 @@ class Sandbox(ABC):
     backend: str = "abstract"
     isolation: str = "none"
 
-    def __init__(self, workspace_root: Path, config: SandboxConfig | None = None,
-                 env: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, workspace_root: Path, config: SandboxConfig | None = None, env: dict[str, str] | None = None
+    ) -> None:
         self.workspace_root = Path(workspace_root)
         self.config = config or SandboxConfig()
         self.env = dict(env or {})
@@ -108,6 +109,7 @@ class Sandbox(ABC):
 
 
 # ---------------------------------------------------------------- local ----
+
 
 def _toolchain_paths() -> dict[str, Path]:
     """Host paths the sandbox needs read-only: interpreter, venv, node, node_modules."""
@@ -153,9 +155,22 @@ def bwrap_available() -> bool:
         return False
     try:
         probe = subprocess.run(
-            ["bwrap", "--ro-bind", "/usr", "/usr", *_system_binds(), "--proc", "/proc", "--dev", "/dev",
-             "--unshare-all", "--die-with-parent", "true"],
-            capture_output=True, timeout=15,
+            [
+                "bwrap",
+                "--ro-bind",
+                "/usr",
+                "/usr",
+                *_system_binds(),
+                "--proc",
+                "/proc",
+                "--dev",
+                "/dev",
+                "--unshare-all",
+                "--die-with-parent",
+                "true",
+            ],
+            capture_output=True,
+            timeout=15,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -170,8 +185,19 @@ def _system_binds() -> list[str]:
             args += ["--symlink", os.readlink(path), str(path)]
         elif path.is_dir():
             args += ["--ro-bind", str(path), str(path)]
-    for etc in ("passwd", "group", "hosts", "nsswitch.conf", "localtime", "ssl", "ca-certificates",
-                "alternatives", "ld.so.cache", "ld.so.conf", "ld.so.conf.d"):
+    for etc in (
+        "passwd",
+        "group",
+        "hosts",
+        "nsswitch.conf",
+        "localtime",
+        "ssl",
+        "ca-certificates",
+        "alternatives",
+        "ld.so.cache",
+        "ld.so.conf",
+        "ld.so.conf.d",
+    ):
         path = Path("/etc") / etc
         if path.exists():
             args += ["--ro-bind", str(path), str(path)]
@@ -181,9 +207,16 @@ def _system_binds() -> list[str]:
 class LocalSandbox(Sandbox):
     backend = "local"
 
-    def __init__(self, workspace_root: Path, config: SandboxConfig | None = None,
-                 env: dict[str, str] | None = None, *, isolation: Literal["auto", "bwrap", "none"] = "auto",
-                 network: bool = False, extra_ro_binds: list[Path] | None = None) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        config: SandboxConfig | None = None,
+        env: dict[str, str] | None = None,
+        *,
+        isolation: Literal["auto", "bwrap", "none"] = "auto",
+        network: bool = False,
+        extra_ro_binds: list[Path] | None = None,
+    ) -> None:
         super().__init__(workspace_root, config, env)
         if isolation == "auto":
             isolation = "bwrap" if bwrap_available() else "none"
@@ -225,14 +258,35 @@ class LocalSandbox(Sandbox):
     def _argv(self, command: str, env: dict[str, str]) -> list[str]:
         if self.isolation != "bwrap":
             return ["bash", "-c", command]
-        args = ["bwrap", "--ro-bind", "/usr", "/usr", *_system_binds(),
-                "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-                "--bind", str(self.workspace_root), SANDBOX_WORKDIR]
+        args = [
+            "bwrap",
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            *_system_binds(),
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--tmpfs",
+            "/tmp",
+            "--bind",
+            str(self.workspace_root),
+            SANDBOX_WORKDIR,
+        ]
         for path in dict.fromkeys(self._paths.values()):
             if path.exists():
                 args += ["--ro-bind", str(path), str(path)]
-        args += ["--unshare-all", "--die-with-parent", "--new-session", "--hostname", "sandbox",
-                 "--chdir", SANDBOX_WORKDIR, "--clearenv"]
+        args += [
+            "--unshare-all",
+            "--die-with-parent",
+            "--new-session",
+            "--hostname",
+            "sandbox",
+            "--chdir",
+            SANDBOX_WORKDIR,
+            "--clearenv",
+        ]
         if self.network:
             args.append("--share-net")
         for key, value in env.items():
@@ -259,9 +313,15 @@ class LocalSandbox(Sandbox):
             with open(out_path, "wb") as out, open(err_path, "wb") as err:
                 try:
                     process = subprocess.Popen(
-                        argv, cwd=self.workspace_root, env=environment if self.isolation != "bwrap" else
-                        {"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
-                        stdin=subprocess.DEVNULL, stdout=out, stderr=err, preexec_fn=limits,
+                        argv,
+                        cwd=self.workspace_root,
+                        env=environment
+                        if self.isolation != "bwrap"
+                        else {"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+                        stdin=subprocess.DEVNULL,
+                        stdout=out,
+                        stderr=err,
+                        preexec_fn=limits,
                     )
                 except OSError as exc:
                     raise SandboxError(f"could not start command: {exc}") from exc
@@ -287,6 +347,7 @@ class LocalSandbox(Sandbox):
 
 # --------------------------------------------------------------- docker ----
 
+
 @lru_cache
 def docker_available() -> bool:
     if not shutil.which("docker"):
@@ -305,23 +366,52 @@ def docker_image_present(image: str = DOCKER_IMAGE) -> bool:
     return probe.returncode == 0
 
 
-def docker_run_args(name: str, workspace_root: Path, config: SandboxConfig, *, network: bool,
-                    image: str = DOCKER_IMAGE) -> list[str]:
+def docker_run_args(
+    name: str, workspace_root: Path, config: SandboxConfig, *, network: bool, image: str = DOCKER_IMAGE
+) -> list[str]:
     """The ``docker run`` command for one sandbox container (pure; unit-tested)."""
     uid, gid = (os.getuid(), os.getgid()) if hasattr(os, "getuid") else (1000, 1000)
     return [
-        "docker", "run", "-d", "--rm", "--name", name,
-        "--network", "bridge" if network else "none",
-        "--cpus", str(config.cpus),
-        "--memory", f"{config.memory_mb}m", "--memory-swap", f"{config.memory_mb}m",
-        "--pids-limit", str(config.pids),
-        "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-        "--read-only", "--tmpfs", "/tmp:rw,exec,size=512m",
-        "--user", f"{uid}:{gid}",
-        "-e", "HOME=/tmp", "-e", "TZ=UTC", "-e", "CI=1", "-e", "PYTHONDONTWRITEBYTECODE=1",
-        "-v", f"{workspace_root}:{SANDBOX_WORKDIR}:rw",
-        "-w", SANDBOX_WORKDIR,
-        image, "sleep", "infinity",
+        "docker",
+        "run",
+        "-d",
+        "--rm",
+        "--name",
+        name,
+        "--network",
+        "bridge" if network else "none",
+        "--cpus",
+        str(config.cpus),
+        "--memory",
+        f"{config.memory_mb}m",
+        "--memory-swap",
+        f"{config.memory_mb}m",
+        "--pids-limit",
+        str(config.pids),
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,exec,size=512m",
+        "--user",
+        f"{uid}:{gid}",
+        "-e",
+        "HOME=/tmp",
+        "-e",
+        "TZ=UTC",
+        "-e",
+        "CI=1",
+        "-e",
+        "PYTHONDONTWRITEBYTECODE=1",
+        "-v",
+        f"{workspace_root}:{SANDBOX_WORKDIR}:rw",
+        "-w",
+        SANDBOX_WORKDIR,
+        image,
+        "sleep",
+        "infinity",
     ]
 
 
@@ -330,8 +420,15 @@ class DockerSandbox(Sandbox):
     isolation = "docker"
     node_modules = "/opt/ledgerkit/node_modules"
 
-    def __init__(self, workspace_root: Path, config: SandboxConfig | None = None,
-                 env: dict[str, str] | None = None, *, network: bool = False, image: str = DOCKER_IMAGE) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        config: SandboxConfig | None = None,
+        env: dict[str, str] | None = None,
+        *,
+        network: bool = False,
+        image: str = DOCKER_IMAGE,
+    ) -> None:
         super().__init__(workspace_root, config, env)
         if not docker_available():
             raise SandboxError("Docker daemon is not reachable")
@@ -377,6 +474,7 @@ class DockerSandbox(Sandbox):
 
 # -------------------------------------------------------------- factory ----
 
+
 def resolve_backend(backend: Backend) -> Literal["docker", "local"]:
     if backend == "auto":
         return "docker" if docker_image_present() else "local"
@@ -389,9 +487,15 @@ def node_modules_for(backend: Literal["docker", "local"]) -> str:
     return DockerSandbox.node_modules if backend == "docker" else local_node_modules()
 
 
-def create_sandbox(workspace_root: Path, backend: Literal["docker", "local"], *,
-                   config: SandboxConfig | None = None, env: dict[str, str] | None = None,
-                   network: bool = False, extra_ro_binds: list[Path] | None = None) -> Sandbox:
+def create_sandbox(
+    workspace_root: Path,
+    backend: Literal["docker", "local"],
+    *,
+    config: SandboxConfig | None = None,
+    env: dict[str, str] | None = None,
+    network: bool = False,
+    extra_ro_binds: list[Path] | None = None,
+) -> Sandbox:
     if backend == "docker":
         return DockerSandbox(workspace_root, config, env, network=network)
     return LocalSandbox(workspace_root, config, env, network=network, extra_ro_binds=extra_ro_binds)

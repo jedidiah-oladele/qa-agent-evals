@@ -60,10 +60,17 @@ def test_auto_rubric_items_need_a_check():
 
 def test_write_tests_needs_mutants_and_test_files():
     with pytest.raises(ValidationError):
-        make(id="wt_999_x", category="write_tests",
-             primary={"type": "mutation", "min_mutant_kill_rate": 0.8, "test_files": ["tests/test_x.py"]})
-    task = make(id="wt_999_x", category="write_tests", mutants=["m/a.patch", "m/b.patch", "m/c.patch"],
-                primary={"type": "mutation", "min_mutant_kill_rate": 0.8, "test_files": ["tests/test_x.py"]})
+        make(
+            id="wt_999_x",
+            category="write_tests",
+            primary={"type": "mutation", "min_mutant_kill_rate": 0.8, "test_files": ["tests/test_x.py"]},
+        )
+    task = make(
+        id="wt_999_x",
+        category="write_tests",
+        mutants=["m/a.patch", "m/b.patch", "m/c.patch"],
+        primary={"type": "mutation", "min_mutant_kill_rate": 0.8, "test_files": ["tests/test_x.py"]},
+    )
     assert task.primary.min_mutant_kill_rate == 0.8
 
 
@@ -74,9 +81,15 @@ def test_pr_derived_needs_a_source():
 
 def test_review_defects_need_ordered_lines():
     with pytest.raises(ValidationError):
-        make(id="cr_999_x", category="code_review",
-             primary={"type": "review_findings", "max_false_positives": 1,
-                      "defects": [{"id": "d", "file": "a.py", "lines": [10, 5], "summary": "x"}]})
+        make(
+            id="cr_999_x",
+            category="code_review",
+            primary={
+                "type": "review_findings",
+                "max_false_positives": 1,
+                "defects": [{"id": "d", "file": "a.py", "lines": [10, 5], "summary": "x"}],
+            },
+        )
 
 
 def test_task_set_spread():

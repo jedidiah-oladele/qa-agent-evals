@@ -37,8 +37,14 @@ def main(argv: list[str] | None = None) -> int:
     elif args.judge == "real":
         spec = models_config().judge
         judges = JudgeSetup(LLMJudge(spec.primary), spec.primary.pricing)
-    result = grade_submission(task, args.diff.read_text(encoding="utf-8"), [], backend=resolve_backend(args.backend),
-                              judges=judges, config=run_config())
+    result = grade_submission(
+        task,
+        args.diff.read_text(encoding="utf-8"),
+        [],
+        backend=resolve_backend(args.backend),
+        judges=judges,
+        config=run_config(),
+    )
     print(json.dumps(result.to_dict(), indent=2))
     return 0 if result.score.primary_pass else 1
 
