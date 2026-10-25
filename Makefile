@@ -39,6 +39,7 @@ test-targets:
 validate:
 	$(PY) -m tools.rebuild_history
 	$(PY) -m validation.validate_tasks $(TASKS) $(ARGS)
+	$(PY) -m tools.task_catalog
 
 ifeq ($(DRY_RUN),1)
 run: dry-run
