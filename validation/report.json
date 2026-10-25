@@ -1,0 +1,1408 @@
+[
+ {
+  "task_id": "bf_001_tax_half_even",
+  "category": "bug_fix",
+  "language": "python",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/float_round.patch": 0,
+   "flawed/two_decimal_quantum.patch": 0,
+   "flawed/round_up.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 3.0
+ },
+ {
+  "task_id": "bf_002_min_subtotal_boundary",
+  "category": "bug_fix",
+  "language": "python",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/fixes_only_percentage.patch": 0,
+   "flawed/checks_discounted_remainder.patch": 0,
+   "flawed/counts_only_eligible_lines.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 2.9
+ },
+ {
+  "task_id": "bf_003_reservation_ttl_override",
+  "category": "bug_fix",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/longest_ttl_wins.patch": 0,
+   "flawed/falsy_ttl_falls_back.patch": 0,
+   "flawed/bypasses_expiry_helper.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 2.8
+ },
+ {
+  "task_id": "bf_004_csv_multiline_line_numbers",
+  "category": "bug_fix",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/first_seen_still_uses_end_line.patch": 0,
+   "flawed/subtracts_one_for_multiline.patch": 0,
+   "flawed/start_tracked_after_blank_skip.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 3.3
+ },
+ {
+  "task_id": "bf_005_order_discount_cent_drift",
+  "category": "bug_fix",
+  "language": "python",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/zero_exempt_lines_in_tax.patch": 0,
+   "flawed/discounts_skip_zero_weight_lines.patch": 0,
+   "flawed/drop_units_on_zero_weights.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 3.4
+ },
+ {
+  "task_id": "bf_006_zero_decimal_currency",
+  "category": "bug_fix",
+  "language": "typescript",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/fixes_only_jpy.patch": 0,
+   "flawed/fixes_only_kwd.patch": 0,
+   "flawed/float_to_fixed.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 5.5
+ },
+ {
+  "task_id": "bf_007_add_months_overflow",
+  "category": "bug_fix",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/patches_only_common_year_feb.patch": 0,
+   "flawed/rolls_invalid_dates_over.patch": 0,
+   "flawed/rewrites_with_trunc.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 5.7
+ },
+ {
+  "task_id": "bf_008_query_encoding",
+  "category": "bug_fix",
+  "language": "typescript",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/escapes_only_ampersand.patch": 0,
+   "flawed/escapes_reported_characters.patch": 0,
+   "flawed/url_search_params.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 6.0
+ },
+ {
+  "task_id": "bf_009_proration_overlap_clamp",
+  "category": "bug_fix",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/min_instead_of_max.patch": 0,
+   "flawed/mirrors_clamp_onto_end.patch": 0,
+   "flawed/floors_the_charge.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 5.2
+ },
+ {
+  "task_id": "bf_010_retry_after_timeout_reuses_signal",
+  "category": "bug_fix",
+  "language": "typescript",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/caller_aborts_stale_controller.patch": 0,
+   "flawed/stops_retrying_timeouts.patch": 0,
+   "flawed/leaks_caller_listeners.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 14.7
+ },
+ {
+  "task_id": "ci_031_circular_import",
+  "category": "ci_triage",
+  "language": "python",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/eager_init_imports.patch": 0,
+   "flawed/conftest_preimports_pricing.patch": 0,
+   "flawed/fixes_shipping_only.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 8.0
+ },
+ {
+  "task_id": "ci_032_float_price_parsing",
+  "category": "ci_triage",
+  "language": "python",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/str_round_trip.patch": 0,
+   "flawed/revert_to_strict_parsing.patch": 0,
+   "flawed/unquantized_decimal.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 2.8
+ },
+ {
+  "task_id": "ci_033_utcnow_deprecation",
+  "category": "ci_triage",
+  "language": "python",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/silence_deprecation_warning.patch": 0,
+   "flawed/naive_local_now.patch": 0,
+   "flawed/astimezone_on_naive.patch": 0,
+   "flawed/fixes_inventory_only.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 3.2
+ },
+ {
+  "task_id": "ci_034_timezone_on_runner",
+  "category": "ci_triage",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/utc_getters_local_setdate.patch": 0,
+   "flawed/pins_tz_in_vitest_config.patch": 0,
+   "flawed/local_midnight_iso_string.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 4.4
+ },
+ {
+  "task_id": "ci_035_unhandled_rejection",
+  "category": "ci_triage",
+  "language": "typescript",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/sync_try_catch.patch": 0,
+   "flawed/global_rejection_handler.patch": 0,
+   "flawed/swallows_parse_errors.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [],
+  "seconds": 4.2
+ },
+ {
+  "task_id": "cr_036_coupon_usage_limits",
+  "category": "code_review",
+  "language": "python",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/misses_unapplied_counting.patch": 0,
+   "flawed/wrong_location.patch": 0,
+   "flawed/flood_of_findings.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 0.1
+ },
+ {
+  "task_id": "cr_037_batch_reservations",
+  "category": "code_review",
+  "language": "python",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/misses_wall_clock.patch": 0,
+   "flawed/blames_reserve_many.patch": 0,
+   "flawed/flags_unusual_but_correct_code.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 0.1
+ },
+ {
+  "task_id": "cr_038_client_token_refresh",
+  "category": "code_review",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/misses_concurrency.patch": 0,
+   "flawed/wrong_locations.patch": 0,
+   "flawed/floods_findings.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 0.1
+ },
+ {
+  "task_id": "cr_039_invoice_credit_notes",
+  "category": "code_review",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/misses_cumulative_limit.patch": 0,
+   "flawed/wrong_file.patch": 0,
+   "flawed/floods_findings.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 0.1
+ },
+ {
+  "task_id": "cr_040_usage_based_billing",
+  "category": "code_review",
+  "language": "typescript",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/misses_timezone.patch": 0,
+   "flawed/flags_benign_code.patch": 0,
+   "flawed/wrong_lines.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 0.1
+ },
+ {
+  "task_id": "fl_027_shared_tax_table_state",
+  "category": "flaky_test",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/isolate_only_the_polluting_test.patch": 0,
+   "flawed/reset_cache_in_conftest.patch": 0,
+   "flawed/shallow_copy_of_cached_table.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/retry.patch": [
+    "no_retry_or_sleep_masking"
+   ]
+  },
+  "notes": [],
+  "seconds": 11.3
+ },
+ {
+  "task_id": "fl_028_reservation_id_collisions",
+  "category": "flaky_test",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/wider_random_range.patch": 0,
+   "flawed/per_instance_counter.patch": 0,
+   "flawed/retry_on_collision.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/retry.patch": [
+    "no_retry_or_sleep_masking"
+   ]
+  },
+  "notes": [],
+  "seconds": 41.0
+ },
+ {
+  "task_id": "fl_029_async_batch_charge_race",
+  "category": "flaky_test",
+  "language": "python",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/snapshot_key_for_result_only.patch": 0,
+   "flawed/lock_around_charge.patch": 0,
+   "flawed/serial_batch_in_test.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/sleep.patch": [
+    "no_retry_or_sleep_masking"
+   ]
+  },
+  "notes": [],
+  "seconds": 11.4
+ },
+ {
+  "task_id": "fl_030_timezone_dependent_expiry",
+  "category": "flaky_test",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/ends_at_2359_utc.patch": 0,
+   "flawed/compares_local_dates.patch": 0,
+   "flawed/pins_utc_in_conftest.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/retry.patch": [
+    "no_retry_or_sleep_masking"
+   ]
+  },
+  "notes": [],
+  "seconds": 11.2
+ },
+ {
+  "task_id": "pr_011_reservation_expiry",
+  "category": "pr_derived",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/reserve_many_drops_ttl.patch": 0,
+   "flawed/active_list_ignores_clock.patch": 0,
+   "flawed/expires_committed.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from shopcore 0008-Expire-stale-inventory-reservations-12.patch"
+  ],
+  "seconds": 3.8
+ },
+ {
+  "task_id": "pr_012_payment_idempotency",
+  "category": "pr_derived",
+  "language": "python",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/charge_many_shares_batch_key.patch": 0,
+   "flawed/replay_consumes_script.patch": 0,
+   "flawed/dashed_uuid_key.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from shopcore 0009-Reuse-one-idempotency-key-across-payment-retries-15.patch"
+  ],
+  "seconds": 3.9
+ },
+ {
+  "task_id": "pr_013_csv_thousands_bom",
+  "category": "pr_derived",
+  "language": "python",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/two_decimal_pattern.patch": 0,
+   "flawed/bom_stripped_after_whitespace.patch": 0,
+   "flawed/pattern_checks_raw_text.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from shopcore 0010-CSV-import-accept-thousands-separators-and-a-UTF-8-B.patch"
+  ],
+  "seconds": 3.9
+ },
+ {
+  "task_id": "pr_014_buy_x_get_y",
+  "category": "pr_derived",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/pools_quantity_across_lines.patch": 0,
+   "flawed/one_free_unit_per_group.patch": 0,
+   "flawed/values_share_of_remaining.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from shopcore 0011-Add-buy-X-get-Y-discounts-19.patch"
+  ],
+  "seconds": 3.8
+ },
+ {
+  "task_id": "pr_015_retry_after",
+  "category": "pr_derived",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/truthy_zero_falls_back.patch": 0,
+   "flawed/lenient_number_parse.patch": 0,
+   "flawed/ignores_now_option.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from ledgerkit 0008-Honour-Retry-After-on-429-and-503-23.patch"
+  ],
+  "seconds": 6.2
+ },
+ {
+  "task_id": "pr_016_invoice_void",
+  "category": "pr_derived",
+  "language": "typescript",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/ignores_payments.patch": 0,
+   "flawed/no_reason_check.patch": 0,
+   "flawed/revoid_and_partial_update.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from ledgerkit 0007-Allow-voiding-invoices-21.patch"
+  ],
+  "seconds": 4.6
+ },
+ {
+  "task_id": "pr_017_cursor_pagination",
+  "category": "pr_derived",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/only_checks_previous_cursor.patch": 0,
+   "flawed/bypasses_request.patch": 0,
+   "flawed/stops_on_empty_page.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from ledgerkit 0009-Add-cursor-pagination-helper-24.patch"
+  ],
+  "seconds": 6.1
+ },
+ {
+  "task_id": "pr_018_plan_change_proration",
+  "category": "pr_derived",
+  "language": "typescript",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/nets_prorated_difference.patch": 0,
+   "flawed/month_count_period.patch": 0,
+   "flawed/steps_from_previous_boundary.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from ledgerkit 0010-Prorate-mid-period-plan-changes-27.patch"
+  ],
+  "seconds": 6.0
+ },
+ {
+  "task_id": "wt_019_money_tests",
+  "category": "write_tests",
+  "language": "python",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/happy_path_only.patch": 0,
+   "flawed/expects_bankers_rounding.patch": 0,
+   "flawed/assertion_light.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 8.3
+ },
+ {
+  "task_id": "wt_020_discount_rules_tests",
+  "category": "write_tests",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/happy_path_only.patch": 0,
+   "flawed/min_subtotal_on_remaining.patch": 0,
+   "flawed/assertion_light.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 9.3
+ },
+ {
+  "task_id": "wt_021_inventory_tests",
+  "category": "write_tests",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/happy_path_only.patch": 0,
+   "flawed/expiry_one_tick_late.patch": 0,
+   "flawed/assertion_light.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 10.1
+ },
+ {
+  "task_id": "wt_022_payment_retry_tests",
+  "category": "write_tests",
+  "language": "python",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/happy_path_only.patch": 0,
+   "flawed/cap_bounds_jitter.patch": 0,
+   "flawed/no_jitter_or_ordering_tests.patch": 0,
+   "flawed/assertion_light.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "delete_one_test": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 13.7
+ },
+ {
+  "task_id": "wt_023_dates_tests",
+  "category": "write_tests",
+  "language": "typescript",
+  "difficulty": "easy",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/happy_path_only.patch": 0,
+   "flawed/inclusive_day_count.patch": 0,
+   "flawed/assertion_light.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 12.7
+ },
+ {
+  "task_id": "wt_024_currency_tests",
+  "category": "write_tests",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/happy_path_only.patch": 0,
+   "flawed/negative_halves_round_up.patch": 0,
+   "flawed/assertion_light.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 13.0
+ },
+ {
+  "task_id": "wt_025_client_tests",
+  "category": "write_tests",
+  "language": "typescript",
+  "difficulty": "hard",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/happy_path_only.patch": 0,
+   "flawed/expects_500_retried.patch": 0,
+   "flawed/no_retry_after_or_pagination.patch": 0,
+   "flawed/assertion_light.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 21.4
+ },
+ {
+  "task_id": "wt_026_billing_tests",
+  "category": "write_tests",
+  "language": "typescript",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/happy_path_only.patch": 0,
+   "flawed/end_day_in_closing_period.patch": 0,
+   "flawed/assertion_light.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ]
+  },
+  "notes": [],
+  "seconds": 14.6
+ }
+]
