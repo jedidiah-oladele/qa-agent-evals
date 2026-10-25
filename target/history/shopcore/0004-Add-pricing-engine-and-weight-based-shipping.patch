@@ -1,0 +1,435 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jedidiah Oladele <66447747+jedidiah-oladele@users.noreply.github.com>
+Date: Mon, 16 Feb 2026 21:22:00 +0100
+Subject: [PATCH 04/11] Add pricing engine and weight-based shipping
+
+PricingEngine.quote() applies discounts, quotes shipping on the
+discounted subtotal, then computes tax per line.
+---
+ src/shopcore/__init__.py |   7 ++
+ src/shopcore/pricing.py  | 109 +++++++++++++++++++++++++++++
+ src/shopcore/shipping.py |  53 +++++++++++++++
+ tests/test_pricing.py    | 143 +++++++++++++++++++++++++++++++++++++++
+ tests/test_shipping.py   |  53 +++++++++++++++
+ 5 files changed, 365 insertions(+)
+ create mode 100644 src/shopcore/pricing.py
+ create mode 100644 src/shopcore/shipping.py
+ create mode 100644 tests/test_pricing.py
+ create mode 100644 tests/test_shipping.py
+
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index f6929b1..4ca30bf 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -26,6 +26,8 @@ from .errors import (
+ )
+ from .money import Money, sum_money
+ from .order import LineItem, Order
++from .pricing import PricedLine, PricingEngine, Quote
++from .shipping import ShippingPolicy, WeightTier
+ from .tax import TaxRegion, TaxRounding, TaxTable, default_tax_table
+ 
+ __version__ = "0.9.0"
+@@ -48,8 +50,12 @@ __all__ = [
+     "PaymentRetryExhaustedError",
+     "PercentageDiscount",
+     "PermanentPaymentError",
++    "PricedLine",
++    "PricingEngine",
+     "Product",
++    "Quote",
+     "ReservationError",
++    "ShippingPolicy",
+     "ShopcoreError",
+     "SystemClock",
+     "TaxConfigError",
+@@ -59,6 +65,7 @@ __all__ = [
+     "TransientPaymentError",
+     "UnknownCurrencyError",
+     "UnknownSkuError",
++    "WeightTier",
+     "apply_discounts",
+     "default_tax_table",
+     "sum_money",
+diff --git a/src/shopcore/pricing.py b/src/shopcore/pricing.py
+new file mode 100644
+index 0000000..f37d47c
+--- /dev/null
++++ b/src/shopcore/pricing.py
+@@ -0,0 +1,109 @@
++"""Turn an :class:`~shopcore.order.Order` into a fully priced quote.
++
++Pipeline: gross line amounts -> discounts -> shipping (on the discounted
++subtotal) -> tax per line -> totals.
++"""
++
++from __future__ import annotations
++
++from collections.abc import Sequence
++from dataclasses import dataclass
++
++from .clock import Clock, SystemClock
++from .discounts import AppliedDiscount, Discount, apply_discounts
++from .errors import CurrencyMismatchError
++from .money import Money, sum_money
++from .order import Order
++from .shipping import ShippingPolicy
++from .tax import TaxRounding, TaxTable, compute_taxes
++
++
++@dataclass(frozen=True)
++class PricedLine:
++    sku: str
++    quantity: int
++    gross: Money
++    discount: Money
++    net: Money
++    tax: Money
++    tax_included: bool = False
++
++    @property
++    def total(self) -> Money:
++        """What the customer pays for this line (net plus tax on top, if any)."""
++        return self.net if self.tax_included else self.net + self.tax
++
++
++@dataclass(frozen=True)
++class Quote:
++    currency: str
++    lines: tuple[PricedLine, ...]
++    subtotal: Money
++    discount_total: Money
++    shipping: Money
++    tax_total: Money
++    total: Money
++    tax_included: bool
++    applied_discounts: tuple[AppliedDiscount, ...] = ()
++
++
++class PricingEngine:
++    def __init__(
++        self,
++        tax_table: TaxTable,
++        discounts: Sequence[Discount] = (),
++        *,
++        shipping: ShippingPolicy | None = None,
++        rounding: TaxRounding = TaxRounding.PER_LINE,
++        clock: Clock | None = None,
++    ) -> None:
++        self.tax_table = tax_table
++        self.discounts = list(discounts)
++        self.shipping = shipping
++        self.rounding = rounding
++        self.clock = clock or SystemClock()
++
++    def eligible_discounts(self, order: Order) -> list[Discount]:
++        """Auto-applied discounts plus those whose code the customer entered."""
++        entered = {code.strip().upper() for code in order.coupon_codes}
++        return [d for d in self.discounts if d.auto_apply or d.code.upper() in entered]
++
++    def quote(self, order: Order) -> Quote:
++        currency = order.currency
++        region = self.tax_table.get(order.region)
++        for line in order.lines:
++            if line.gross.currency != currency:
++                raise CurrencyMismatchError(currency, line.gross.currency)
++
++        result = apply_discounts(order.lines, self.eligible_discounts(order), now=self.clock.now())
++        gross = [line.gross for line in order.lines]
++        discounts = result.per_line
++        nets = [g - d for g, d in zip(gross, discounts)]
++        rates = [region.rate_for(line.product.tax_category) for line in order.lines]
++        taxes = compute_taxes(nets, rates, inclusive=region.prices_include_tax, rounding=self.rounding)
++
++        discounted_subtotal = sum_money(nets, currency)
++        shipping = Money.zero(currency)
++        if self.shipping is not None:
++            shipping = self.shipping.quote(order.lines, discounted_subtotal)
++
++        tax_total = sum_money(taxes, currency)
++        total = discounted_subtotal + shipping
++        if not region.prices_include_tax:
++            total = total + tax_total
++
++        priced = tuple(
++            PricedLine(line.sku, line.quantity, g, d, n, t, tax_included=region.prices_include_tax)
++            for line, g, d, n, t in zip(order.lines, gross, discounts, nets, taxes)
++        )
++        return Quote(
++            currency=currency,
++            lines=priced,
++            subtotal=sum_money(gross, currency),
++            discount_total=sum_money(discounts, currency),
++            shipping=shipping,
++            tax_total=tax_total,
++            total=total,
++            tax_included=region.prices_include_tax,
++            applied_discounts=tuple(result.applied),
++        )
+diff --git a/src/shopcore/shipping.py b/src/shopcore/shipping.py
+new file mode 100644
+index 0000000..80b2e47
+--- /dev/null
++++ b/src/shopcore/shipping.py
+@@ -0,0 +1,53 @@
++"""Weight-based shipping with a free-shipping threshold."""
++
++from __future__ import annotations
++
++import math
++from collections.abc import Sequence
++from dataclasses import dataclass
++
++from .money import Money
++from .order import LineItem
++
++
++@dataclass(frozen=True, slots=True)
++class WeightTier:
++    max_grams: int
++    price: Money
++
++
++@dataclass(frozen=True)
++class ShippingPolicy:
++    """Price shipping by total weight.
++
++    ``tiers`` are matched by the smallest ``max_grams`` that is at least the
++    order weight (inclusive). Heavier orders pay the last tier plus
++    ``per_extra_kg`` for every started kilogram above it. Orders whose
++    *discounted* subtotal reaches ``free_over`` ship free.
++    """
++
++    tiers: tuple[WeightTier, ...]
++    free_over: Money | None = None
++    per_extra_kg: Money | None = None
++
++    def __post_init__(self) -> None:
++        if not self.tiers:
++            raise ValueError("at least one weight tier is required")
++        ordered = tuple(sorted(self.tiers, key=lambda t: t.max_grams))
++        object.__setattr__(self, "tiers", ordered)
++
++    def quote(self, lines: Sequence[LineItem], discounted_subtotal: Money) -> Money:
++        currency = discounted_subtotal.currency
++        weight = sum(line.weight_grams for line in lines)
++        if weight == 0:
++            return Money.zero(currency)
++        if self.free_over is not None and discounted_subtotal >= self.free_over:
++            return Money.zero(currency)
++        for tier in self.tiers:
++            if weight <= tier.max_grams:
++                return tier.price
++        last = self.tiers[-1]
++        if self.per_extra_kg is None:
++            raise ValueError(f"order weight {weight}g exceeds the heaviest tier ({last.max_grams}g)")
++        extra_kg = math.ceil((weight - last.max_grams) / 1000)
++        return last.price + self.per_extra_kg * extra_kg
+diff --git a/tests/test_pricing.py b/tests/test_pricing.py
+new file mode 100644
+index 0000000..72e3542
+--- /dev/null
++++ b/tests/test_pricing.py
+@@ -0,0 +1,143 @@
++from datetime import timedelta
++from decimal import Decimal
++
++import pytest
++
++from shopcore import (
++    CurrencyMismatchError,
++    FixedAmountDiscount,
++    LineItem,
++    Money,
++    Order,
++    PercentageDiscount,
++    PricingEngine,
++    Product,
++    ShippingPolicy,
++    TaxConfigError,
++    TaxRounding,
++    WeightTier,
++    default_tax_table,
++)
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++@pytest.fixture
++def shipping():
++    return ShippingPolicy(tiers=(WeightTier(1000, usd("5.00")), WeightTier(5000, usd("9.00"))), free_over=usd("50"))
++
++
++def make_order(catalog, region="US-CA", coupons=(), **quantities):
++    order = Order("USD", region, coupon_codes=tuple(coupons))
++    for sku, qty in quantities.items():
++        order.add(catalog.get(sku.replace("_", "-")), qty)
++    return order
++
++
++def test_simple_exclusive_tax_quote(catalog, clock):
++    engine = PricingEngine(default_tax_table(), clock=clock)
++    quote = engine.quote(make_order(catalog, TEE_001=2, MUG_001=1))
++    assert quote.subtotal == usd("52.48")
++    # 39.98 * 0.0725 = 2.89855 -> 2.90 ; 12.50 * 0.0725 = 0.90625 -> 0.91
++    assert [line.tax.amount for line in quote.lines] == [Decimal("2.90"), Decimal("0.91")]
++    assert quote.tax_total == usd("3.81")
++    assert quote.total == usd("56.29")
++    assert not quote.tax_included
++
++
++def test_food_is_exempt_in_california(catalog, clock):
++    quote = PricingEngine(default_tax_table(), clock=clock).quote(make_order(catalog, BEAN_250=2))
++    assert quote.tax_total.is_zero()
++    assert quote.total == usd("19.90")
++
++
++def test_inclusive_region_does_not_add_tax_on_top(catalog, clock):
++    order = Order("USD", "GB")
++    order.add(catalog.get("MUG-001"), 2)
++    quote = PricingEngine(default_tax_table(), clock=clock).quote(order)
++    # 25.00 includes 20% VAT: 25 * 0.2 / 1.2 = 4.1666.. -> 4.17
++    assert quote.tax_total == usd("4.17")
++    assert quote.total == usd("25.00")
++    assert quote.lines[0].total == usd("25.00")
++    assert quote.tax_included
++
++
++def test_coupon_codes_are_case_insensitive_and_required(catalog, clock):
++    coupon = PercentageDiscount(code="SPRING10", percent=Decimal(10))
++    engine = PricingEngine(default_tax_table(), [coupon], clock=clock)
++    assert engine.quote(make_order(catalog, MUG_001=2)).discount_total.is_zero()
++    quote = engine.quote(make_order(catalog, coupons=[" spring10 "], MUG_001=2))
++    assert quote.discount_total == usd("2.50")
++    assert [a.code for a in quote.applied_discounts] == ["SPRING10"]
++
++
++def test_auto_apply_discount_needs_no_code(catalog, clock):
++    auto = FixedAmountDiscount(code="WELCOME", amount=usd("3"), auto_apply=True)
++    quote = PricingEngine(default_tax_table(), [auto], clock=clock).quote(make_order(catalog, MUG_001=1))
++    assert quote.discount_total == usd("3.00")
++
++
++def test_tax_is_charged_on_discounted_amount(catalog, clock):
++    auto = FixedAmountDiscount(code="TEN", amount=usd("10"), auto_apply=True)
++    quote = PricingEngine(default_tax_table(), [auto], clock=clock).quote(make_order(catalog, BOOK_042=1))
++    assert quote.lines[0].net == usd("14.00")
++    assert quote.tax_total == usd("1.02")  # 14.00 * 0.0725 = 1.015 -> 1.02
++
++
++def test_shipping_threshold_uses_discounted_subtotal(catalog, clock, shipping):
++    auto = FixedAmountDiscount(code="FIVE", amount=usd("5"), auto_apply=True)
++    order = make_order(catalog, BOOK_042=2)  # gross 48.00, 1080g
++    order.add(catalog.get("GIFT-10"), 1)  # gross 58.00
++    engine = PricingEngine(default_tax_table(), [auto], shipping=shipping, clock=clock)
++    quote = engine.quote(order)
++    assert quote.subtotal == usd("58.00")
++    assert quote.shipping.is_zero()
++    big = FixedAmountDiscount(code="TEN", amount=usd("10"), auto_apply=True)
++    quote = PricingEngine(default_tax_table(), [big], shipping=shipping, clock=clock).quote(order)
++    assert quote.shipping == usd("9.00")
++
++
++def test_per_order_rounding_option(catalog, clock):
++    order = Order("USD", "US-NY")
++    for i in range(3):
++        order.add(Product(f"PIN-{i}", "Pin", usd("0.13")), 1)
++    per_line = PricingEngine(default_tax_table(), clock=clock).quote(order)
++    per_order = PricingEngine(default_tax_table(), rounding=TaxRounding.PER_ORDER, clock=clock).quote(order)
++    assert per_line.tax_total == usd("0.03")  # 0.0052 -> 0.01 each
++    assert per_order.tax_total == usd("0.02")  # 0.0156 -> 0.02
++
++
++def test_expired_coupon_is_not_applied(catalog, clock):
++    coupon = PercentageDiscount(code="FLASH", percent=Decimal(30), expires_at=clock.now() + timedelta(minutes=5))
++    engine = PricingEngine(default_tax_table(), [coupon], clock=clock)
++    order = make_order(catalog, coupons=["FLASH"], MUG_001=1)
++    assert not engine.quote(order).discount_total.is_zero()
++    clock.advance(timedelta(minutes=5))
++    assert engine.quote(order).discount_total.is_zero()
++
++
++def test_unknown_region(catalog, clock):
++    with pytest.raises(TaxConfigError):
++        PricingEngine(default_tax_table(), clock=clock).quote(make_order(catalog, region="FR", MUG_001=1))
++
++
++def test_currency_mismatch_line_is_rejected(clock):
++    order = Order("USD", "US-CA")
++    order.lines.append(LineItem(Product("E-1", "Euro item", Money.of("1", "EUR")), 1))
++    with pytest.raises(CurrencyMismatchError):
++        PricingEngine(default_tax_table(), clock=clock).quote(order)
++
++
++def test_empty_order_quotes_zero(clock):
++    quote = PricingEngine(default_tax_table(), clock=clock).quote(Order("USD", "US-CA"))
++    assert quote.total == usd("0") and quote.lines == ()
++
++
++def test_line_totals_add_up_to_quote_total(catalog, clock):
++    coupon = PercentageDiscount(code="ODD", percent=Decimal("12.5"), auto_apply=True)
++    quote = PricingEngine(default_tax_table(), [coupon], clock=clock).quote(
++        make_order(catalog, TEE_001=3, MUG_001=2, BOOK_042=1)
++    )
++    assert sum((line.total.amount for line in quote.lines), Decimal(0)) == quote.total.amount
+diff --git a/tests/test_shipping.py b/tests/test_shipping.py
+new file mode 100644
+index 0000000..7f98679
+--- /dev/null
++++ b/tests/test_shipping.py
+@@ -0,0 +1,53 @@
++import pytest
++
++from shopcore import LineItem, Money, ShippingPolicy, WeightTier
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++@pytest.fixture
++def policy():
++    return ShippingPolicy(
++        tiers=(WeightTier(2000, usd("8.00")), WeightTier(500, usd("4.00"))),
++        free_over=usd("75"),
++        per_extra_kg=usd("1.50"),
++    )
++
++
++def test_tiers_are_sorted_and_inclusive(policy, catalog):
++    assert [t.max_grams for t in policy.tiers] == [500, 2000]
++    lines = [LineItem(catalog.get("TEE-001"), 2)]  # 360g
++    assert policy.quote(lines, usd("39.98")) == usd("4.00")
++
++
++def test_exact_tier_boundary_uses_that_tier(catalog):
++    policy = ShippingPolicy(tiers=(WeightTier(360, usd("3.00")), WeightTier(1000, usd("6.00"))))
++    assert policy.quote([LineItem(catalog.get("TEE-001"), 2)], usd("1")) == usd("3.00")
++
++
++def test_free_over_uses_given_discounted_subtotal(policy, catalog):
++    lines = [LineItem(catalog.get("BOOK-042"), 4)]  # 2160g, gross 96.00
++    assert policy.quote(lines, usd("74.99")) == usd("9.50")
++    assert policy.quote(lines, usd("75.00")).is_zero()
++
++
++def test_extra_kilograms_are_rounded_up(policy, catalog):
++    lines = [LineItem(catalog.get("BOOK-042"), 6)]  # 3240g -> 1240g over -> 2 extra kg
++    assert policy.quote(lines, usd("10")) == usd("11.00")
++
++
++def test_weightless_orders_ship_free(policy, catalog):
++    assert policy.quote([LineItem(catalog.get("GIFT-10"), 3)], usd("30")).is_zero()
++
++
++def test_too_heavy_without_extra_rate(catalog):
++    policy = ShippingPolicy(tiers=(WeightTier(500, usd("4.00")),))
++    with pytest.raises(ValueError, match="exceeds"):
++        policy.quote([LineItem(catalog.get("BOOK-042"), 2)], usd("1"))
++
++
++def test_needs_a_tier():
++    with pytest.raises(ValueError):
++        ShippingPolicy(tiers=())

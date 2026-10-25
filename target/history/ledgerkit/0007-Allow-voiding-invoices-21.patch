@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jedidiah Oladele <66447747+jedidiah-oladele@users.noreply.github.com>
+Date: Tue, 19 May 2026 15:26:00 +0100
+Subject: [PATCH 07/10] Allow voiding invoices (#21)
+
+Finance needs to cancel invoices raised by mistake.
+
+Adds `Invoice.void(reason)` and a new `"void"` status:
+
+- Drafts can always be voided. Issued invoices can be voided only while
+  no payment has been recorded; otherwise throw `InvoiceStateError`
+  (they need a credit note instead). Paid and already-void invoices
+  cannot be voided.
+- A non-blank reason is required (`ValidationError`); it is stored
+  trimmed and exposed as `voidReason`.
+- A void invoice is final: it cannot be issued, edited or paid, and is
+  never overdue.
+---
+ src/invoice.ts             | 23 ++++++++++++++-
+ tests/invoice-void.test.ts | 58 ++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 80 insertions(+), 1 deletion(-)
+ create mode 100644 tests/invoice-void.test.ts
+
+diff --git a/src/invoice.ts b/src/invoice.ts
+index 8e08594..7225493 100644
+--- a/src/invoice.ts
++++ b/src/invoice.ts
+@@ -2,7 +2,7 @@ import { CurrencyMismatchError, InvoiceStateError, ValidationError } from "./err
+ import { type ISODate, addDays, compareDates } from "./dates";
+ import { type Money, add, multiply, subtract, sum, zero } from "./money";
+ 
+-export type InvoiceStatus = "draft" | "issued" | "paid";
++export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
+ 
+ export interface InvoiceLine {
+   readonly description: string;
+@@ -30,6 +30,7 @@ export class Invoice {
+   private _status: InvoiceStatus = "draft";
+   private _number: string | undefined;
+   private _issuedOn: ISODate | undefined;
++  private _voidReason: string | undefined;
+   readonly netDays: number;
+ 
+   constructor(
+@@ -55,6 +56,9 @@ export class Invoice {
+   get dueOn(): ISODate | undefined {
+     return this._issuedOn === undefined ? undefined : addDays(this._issuedOn, this.netDays);
+   }
++  get voidReason(): string | undefined {
++    return this._voidReason;
++  }
+   get lines(): readonly InvoiceLine[] {
+     return this._lines;
+   }
+@@ -173,4 +177,21 @@ export class Invoice {
+     const due = this.dueOn;
+     return this._status === "issued" && due !== undefined && compareDates(today, due) > 0;
+   }
++
++  /**
++   * Cancel the invoice. Drafts can always be voided; issued invoices only
++   * while nothing has been paid against them. A reason is required for the
++   * audit trail.
++   */
++  void(reason: string): void {
++    this.requireStatus("draft", "issued");
++    if (!reason.trim()) {
++      throw new ValidationError("a reason is required to void an invoice");
++    }
++    if (this._payments.length > 0) {
++      throw new InvoiceStateError("cannot void an invoice with payments; issue a credit note instead");
++    }
++    this._voidReason = reason.trim();
++    this._status = "void";
++  }
+ }
+diff --git a/tests/invoice-void.test.ts b/tests/invoice-void.test.ts
+new file mode 100644
+index 0000000..bbb3f6d
+--- /dev/null
++++ b/tests/invoice-void.test.ts
+@@ -0,0 +1,58 @@
++import { describe, expect, it } from "vitest";
++import { InvoiceStateError, ValidationError } from "../src/errors";
++import { Invoice } from "../src/invoice";
++import { money } from "../src/money";
++
++function draft(): Invoice {
++  const invoice = new Invoice("USD");
++  invoice.addLine({ description: "Plan", quantity: 1, unitPrice: money(5_000, "USD"), taxRate: 0 });
++  return invoice;
++}
++
++describe("Invoice.void", () => {
++  it("voids a draft and keeps the reason", () => {
++    const invoice = draft();
++    invoice.void("  duplicate  ");
++    expect(invoice.status).toBe("void");
++    expect(invoice.voidReason).toBe("duplicate");
++  });
++
++  it("voids an issued invoice with no payments", () => {
++    const invoice = draft();
++    invoice.issue("INV-9", "2026-02-01");
++    invoice.void("customer cancelled");
++    expect(invoice.status).toBe("void");
++    expect(invoice.isOverdue("2027-01-01")).toBe(false);
++  });
++
++  it("refuses to void once money was received", () => {
++    const invoice = draft();
++    invoice.issue("INV-9", "2026-02-01");
++    invoice.recordPayment(money(1_000, "USD"), "2026-02-03");
++    expect(() => invoice.void("oops")).toThrow(InvoiceStateError);
++    expect(invoice.status).toBe("issued");
++  });
++
++  it("refuses to void paid or already void invoices", () => {
++    const paid = draft();
++    paid.issue("INV-1", "2026-02-01");
++    paid.recordPayment(money(5_000, "USD"), "2026-02-02");
++    expect(() => paid.void("late")).toThrow(InvoiceStateError);
++    const voided = draft();
++    voided.void("first");
++    expect(() => voided.void("second")).toThrow(InvoiceStateError);
++  });
++
++  it("requires a reason", () => {
++    expect(() => draft().void("   ")).toThrow(ValidationError);
++  });
++
++  it("blocks further changes after voiding", () => {
++    const invoice = draft();
++    invoice.void("test");
++    expect(() => invoice.issue("INV-1", "2026-01-01")).toThrow(InvoiceStateError);
++    expect(() => invoice.addLine({ description: "x", quantity: 1, unitPrice: money(1, "USD"), taxRate: 0 })).toThrow(
++      InvoiceStateError,
++    );
++  });
++});

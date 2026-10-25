@@ -1,0 +1,577 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jedidiah Oladele <66447747+jedidiah-oladele@users.noreply.github.com>
+Date: Mon, 12 Jan 2026 09:14:00 +0100
+Subject: [PATCH 01/11] Add Money value type, clock and error hierarchy
+
+Money stores Decimal amounts with an explicit currency and only rounds
+when asked. allocate() splits an amount across weights without losing a
+minor unit. Clocks are injectable so time-dependent code is testable.
+---
+ README.md                |  25 ++++++
+ pyproject.toml           |  25 ++++++
+ ruff.toml                |   9 +++
+ src/shopcore/__init__.py |  42 ++++++++++
+ src/shopcore/clock.py    |  41 ++++++++++
+ src/shopcore/errors.py   |  76 ++++++++++++++++++
+ src/shopcore/money.py    | 168 +++++++++++++++++++++++++++++++++++++++
+ tests/test_money.py      | 116 +++++++++++++++++++++++++++
+ 8 files changed, 502 insertions(+)
+ create mode 100644 README.md
+ create mode 100644 pyproject.toml
+ create mode 100644 ruff.toml
+ create mode 100644 src/shopcore/__init__.py
+ create mode 100644 src/shopcore/clock.py
+ create mode 100644 src/shopcore/errors.py
+ create mode 100644 src/shopcore/money.py
+ create mode 100644 tests/test_money.py
+
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..baacf94
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,25 @@
++# shopcore
++
++A small, typed Python 3.12 library for the money side of an online shop:
++
++| Module | What it does |
++| --- | --- |
++| `money` | `Money` value type on `Decimal`, per-currency minor units, half-up rounding, cent-exact allocation |
++| `catalog`, `order` | Products, catalog lookup, orders and line items |
++| `discounts` | Percentage, fixed-amount and buy-X-get-Y rules, priority ordering, stacking vs exclusive discounts, expiry |
++| `tax` | Tax regions with standard/reduced/exempt categories, tax-inclusive regions, per-line or per-order rounding |
++| `shipping` | Weight tiers, extra-kilogram pricing, free shipping over a discounted-subtotal threshold |
++| `pricing` | `PricingEngine.quote(order)`: discounts, then shipping, then tax, then totals |
++| `inventory` | Stock levels, reservations with time-to-live, commit/release, all-or-nothing multi-SKU reservations |
++| `payments` | Async capture with exponential backoff, jitter and idempotency keys; bounded-concurrency batch charging |
++| `csv_import` | Forgiving-layout, strict-value product CSV import with per-line error reports |
++| `testing` | `ScriptedGateway` and `RecordingSleep` test doubles |
++
++No runtime dependencies. Tests use pytest:
++
++```bash
++pytest            # from this directory; pyproject.toml sets pythonpath=src
++```
++
++This library is synthetic: it was written as a target codebase for the
++`qa-agent-evals` benchmark and is not used in production.
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..0e305d9
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,25 @@
++[project]
++name = "shopcore"
++version = "0.9.0"
++description = "Order pricing, discounts, tax, inventory reservations, payment retries and CSV import for small shops."
++readme = "README.md"
++requires-python = ">=3.12"
++license = { text = "MIT" }
++authors = [{ name = "Jedidiah Oladele" }]
++dependencies = []
++
++[project.optional-dependencies]
++test = ["pytest>=8"]
++
++[build-system]
++requires = ["hatchling"]
++build-backend = "hatchling.build"
++
++[tool.hatch.build.targets.wheel]
++packages = ["src/shopcore"]
++
++[tool.pytest.ini_options]
++pythonpath = ["src"]
++testpaths = ["tests"]
++addopts = "-q"
++filterwarnings = ["error"]
+diff --git a/ruff.toml b/ruff.toml
+new file mode 100644
+index 0000000..c824c93
+--- /dev/null
++++ b/ruff.toml
+@@ -0,0 +1,9 @@
++line-length = 120
++target-version = "py312"
++
++[lint]
++select = ["E", "F", "I", "B", "UP"]
++ignore = ["B905"]
++
++[lint.isort]
++known-first-party = ["shopcore"]
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+new file mode 100644
+index 0000000..9b0af80
+--- /dev/null
++++ b/src/shopcore/__init__.py
+@@ -0,0 +1,42 @@
++"""shopcore: order pricing, discounts, tax, inventory, payments and CSV import."""
++
++from .clock import Clock, FixedClock, SystemClock
++from .errors import (
++    CsvFormatError,
++    CurrencyMismatchError,
++    DiscountError,
++    InsufficientStockError,
++    PaymentError,
++    PaymentRetryExhaustedError,
++    PermanentPaymentError,
++    ReservationError,
++    ShopcoreError,
++    TaxConfigError,
++    TransientPaymentError,
++    UnknownCurrencyError,
++    UnknownSkuError,
++)
++from .money import Money, sum_money
++
++__version__ = "0.9.0"
++
++__all__ = [
++    "Clock",
++    "CsvFormatError",
++    "CurrencyMismatchError",
++    "DiscountError",
++    "FixedClock",
++    "InsufficientStockError",
++    "Money",
++    "PaymentError",
++    "PaymentRetryExhaustedError",
++    "PermanentPaymentError",
++    "ReservationError",
++    "ShopcoreError",
++    "SystemClock",
++    "TaxConfigError",
++    "TransientPaymentError",
++    "UnknownCurrencyError",
++    "UnknownSkuError",
++    "sum_money",
++]
+diff --git a/src/shopcore/clock.py b/src/shopcore/clock.py
+new file mode 100644
+index 0000000..61e3025
+--- /dev/null
++++ b/src/shopcore/clock.py
+@@ -0,0 +1,41 @@
++"""Injectable clocks so time-dependent code can be tested deterministically."""
++
++from __future__ import annotations
++
++from datetime import UTC, datetime, timedelta
++from typing import Protocol
++
++
++class Clock(Protocol):
++    def now(self) -> datetime:
++        """Return the current time as a timezone-aware UTC datetime."""
++        ...
++
++
++class SystemClock:
++    """Wall-clock time in UTC."""
++
++    def now(self) -> datetime:
++        return datetime.now(UTC)
++
++
++class FixedClock:
++    """A clock that only moves when told to. Useful in tests."""
++
++    def __init__(self, start: datetime) -> None:
++        if start.tzinfo is None:
++            raise ValueError("FixedClock needs a timezone-aware datetime")
++        self._now = start.astimezone(UTC)
++
++    def now(self) -> datetime:
++        return self._now
++
++    def advance(self, delta: timedelta) -> None:
++        if delta < timedelta(0):
++            raise ValueError("clocks do not run backwards")
++        self._now += delta
++
++    def set(self, moment: datetime) -> None:
++        if moment.tzinfo is None:
++            raise ValueError("FixedClock needs a timezone-aware datetime")
++        self._now = moment.astimezone(UTC)
+diff --git a/src/shopcore/errors.py b/src/shopcore/errors.py
+new file mode 100644
+index 0000000..cbfad29
+--- /dev/null
++++ b/src/shopcore/errors.py
+@@ -0,0 +1,76 @@
++"""Exception hierarchy for shopcore.
++
++Every error raised on purpose by the library derives from :class:`ShopcoreError`,
++so callers can catch library failures without swallowing programming errors.
++"""
++
++
++class ShopcoreError(Exception):
++    """Base class for all shopcore errors."""
++
++
++class CurrencyMismatchError(ShopcoreError, ValueError):
++    """Raised when an operation mixes two different currencies."""
++
++    def __init__(self, left: str, right: str) -> None:
++        super().__init__(f"currency mismatch: {left} vs {right}")
++        self.left = left
++        self.right = right
++
++
++class UnknownCurrencyError(ShopcoreError, ValueError):
++    """Raised for currency codes shopcore has no exponent for."""
++
++
++class UnknownSkuError(ShopcoreError, KeyError):
++    """Raised when a SKU is not present in the catalog or inventory."""
++
++    def __str__(self) -> str:  # KeyError quotes its message; keep it readable.
++        return str(self.args[0]) if self.args else "unknown sku"
++
++
++class DiscountError(ShopcoreError, ValueError):
++    """Raised when a discount is configured with invalid parameters."""
++
++
++class TaxConfigError(ShopcoreError, ValueError):
++    """Raised when a tax region or rate is missing or invalid."""
++
++
++class InsufficientStockError(ShopcoreError):
++    """Raised when a reservation asks for more units than are available."""
++
++    def __init__(self, sku: str, requested: int, available: int) -> None:
++        super().__init__(f"insufficient stock for {sku}: requested {requested}, available {available}")
++        self.sku = sku
++        self.requested = requested
++        self.available = available
++
++
++class ReservationError(ShopcoreError):
++    """Raised for invalid reservation state transitions."""
++
++
++class PaymentError(ShopcoreError):
++    """Base class for payment failures."""
++
++
++class TransientPaymentError(PaymentError):
++    """A failure that may succeed if retried (timeouts, 5xx, rate limits)."""
++
++
++class PermanentPaymentError(PaymentError):
++    """A failure that will not succeed on retry (card declined, invalid token)."""
++
++
++class PaymentRetryExhaustedError(PaymentError):
++    """Raised when every retry attempt failed with a transient error."""
++
++    def __init__(self, attempts: int, last_error: Exception) -> None:
++        super().__init__(f"payment failed after {attempts} attempts: {last_error}")
++        self.attempts = attempts
++        self.last_error = last_error
++
++
++class CsvFormatError(ShopcoreError, ValueError):
++    """Raised when a CSV file cannot be imported at all (e.g. missing columns)."""
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+new file mode 100644
+index 0000000..adfc72e
+--- /dev/null
++++ b/src/shopcore/money.py
+@@ -0,0 +1,168 @@
++"""Money values with explicit currency and exact decimal arithmetic.
++
++Amounts are stored as :class:`decimal.Decimal`. Arithmetic keeps full precision;
++rounding to the currency's minor unit only happens when :meth:`Money.quantize`
++is called, so callers decide where rounding belongs (per line, per order, ...).
++"""
++
++from __future__ import annotations
++
++from collections.abc import Sequence
++from dataclasses import dataclass
++from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
++
++from .errors import CurrencyMismatchError, UnknownCurrencyError
++
++#: Number of digits after the decimal point for each supported currency.
++CURRENCY_EXPONENTS: dict[str, int] = {
++    "USD": 2,
++    "EUR": 2,
++    "GBP": 2,
++    "NGN": 2,
++    "JPY": 0,
++    "KWD": 3,
++}
++
++
++def exponent_for(currency: str) -> int:
++    """Return the minor-unit exponent for ``currency``."""
++    try:
++        return CURRENCY_EXPONENTS[currency]
++    except KeyError:
++        raise UnknownCurrencyError(f"unknown currency: {currency!r}") from None
++
++
++def minor_unit(currency: str) -> Decimal:
++    """Smallest representable amount, e.g. ``Decimal('0.01')`` for USD."""
++    return Decimal(1).scaleb(-exponent_for(currency))
++
++
++def round_half_up(value: Decimal, currency: str) -> Decimal:
++    """Round ``value`` to the currency's minor unit, halves away from zero."""
++    return value.quantize(minor_unit(currency), rounding=ROUND_HALF_UP)
++
++
++def _to_decimal(value: Decimal | int | str) -> Decimal:
++    if isinstance(value, Decimal):
++        return value
++    if isinstance(value, bool):
++        raise TypeError("bool is not a valid money amount")
++    if isinstance(value, (int, str)):
++        return Decimal(value)
++    raise TypeError(f"unsupported amount type: {type(value).__name__} (floats are not accepted)")
++
++
++@dataclass(frozen=True, slots=True)
++class Money:
++    """An immutable amount of a single currency."""
++
++    amount: Decimal
++    currency: str
++
++    def __post_init__(self) -> None:
++        exponent_for(self.currency)
++        object.__setattr__(self, "amount", _to_decimal(self.amount))
++
++    @classmethod
++    def of(cls, amount: Decimal | int | str, currency: str) -> Money:
++        return cls(_to_decimal(amount), currency)
++
++    @classmethod
++    def zero(cls, currency: str) -> Money:
++        return cls(Decimal(0), currency)
++
++    # -- arithmetic -----------------------------------------------------
++    def _check(self, other: object) -> Money:
++        if not isinstance(other, Money):
++            raise TypeError(f"expected Money, got {type(other).__name__}")
++        if other.currency != self.currency:
++            raise CurrencyMismatchError(self.currency, other.currency)
++        return other
++
++    def __add__(self, other: Money) -> Money:
++        other = self._check(other)
++        return Money(self.amount + other.amount, self.currency)
++
++    def __sub__(self, other: Money) -> Money:
++        other = self._check(other)
++        return Money(self.amount - other.amount, self.currency)
++
++    def __mul__(self, factor: Decimal | int) -> Money:
++        if isinstance(factor, (float, bool)) or not isinstance(factor, (int, Decimal)):
++            raise TypeError("Money can only be multiplied by int or Decimal")
++        return Money(self.amount * factor, self.currency)
++
++    __rmul__ = __mul__
++
++    def __neg__(self) -> Money:
++        return Money(-self.amount, self.currency)
++
++    def __lt__(self, other: Money) -> bool:
++        return self.amount < self._check(other).amount
++
++    def __le__(self, other: Money) -> bool:
++        return self.amount <= self._check(other).amount
++
++    def __gt__(self, other: Money) -> bool:
++        return self.amount > self._check(other).amount
++
++    def __ge__(self, other: Money) -> bool:
++        return self.amount >= self._check(other).amount
++
++    # -- helpers --------------------------------------------------------
++    def is_zero(self) -> bool:
++        return self.amount == 0
++
++    def is_negative(self) -> bool:
++        return self.amount < 0
++
++    def quantize(self) -> Money:
++        """Round to the currency's minor unit (half away from zero)."""
++        return Money(round_half_up(self.amount, self.currency), self.currency)
++
++    def min(self, other: Money) -> Money:
++        return self if self <= other else other
++
++    def max(self, other: Money) -> Money:
++        return self if self >= other else other
++
++    def allocate(self, weights: Sequence[Decimal | int]) -> list[Money]:
++        """Split this amount across ``weights`` without losing a minor unit.
++
++        The amount is first rounded to the currency's minor unit. Each share is
++        rounded down, then the leftover minor units go to the shares with the
++        largest remainders (ties go to the earliest share). The returned parts
++        always sum exactly to the rounded amount.
++        """
++        if not weights:
++            raise ValueError("allocate() needs at least one weight")
++        weights = [_to_decimal(w) for w in weights]
++        if any(w < 0 for w in weights):
++            raise ValueError("weights must be non-negative")
++        total_weight = sum(weights, Decimal(0))
++        if total_weight == 0:
++            raise ValueError("at least one weight must be positive")
++
++        unit = minor_unit(self.currency)
++        total = round_half_up(self.amount, self.currency)
++        sign = -1 if total < 0 else 1
++        units_total = int((abs(total) / unit).to_integral_value())
++
++        raw = [Decimal(units_total) * w / total_weight for w in weights]
++        floors = [int(r.to_integral_value(rounding=ROUND_DOWN)) for r in raw]
++        leftover = units_total - sum(floors)
++        order = sorted(range(len(weights)), key=lambda i: (-(raw[i] - floors[i]), i))
++        for i in order[:leftover]:
++            floors[i] += 1
++        return [Money(sign * Decimal(units) * unit, self.currency) for units in floors]
++
++    def __str__(self) -> str:
++        return f"{self.currency} {round_half_up(self.amount, self.currency)}"
++
++
++def sum_money(values: Sequence[Money], currency: str) -> Money:
++    """Sum ``values``; an empty sequence gives zero in ``currency``."""
++    total = Money.zero(currency)
++    for value in values:
++        total = total + value
++    return total
+diff --git a/tests/test_money.py b/tests/test_money.py
+new file mode 100644
+index 0000000..fe4d56a
+--- /dev/null
++++ b/tests/test_money.py
+@@ -0,0 +1,116 @@
++from decimal import Decimal
++
++import pytest
++
++from shopcore import CurrencyMismatchError, Money, UnknownCurrencyError, sum_money
++from shopcore.money import minor_unit, round_half_up
++
++
++def test_money_converts_int_and_str_to_decimal():
++    assert Money.of(5, "USD").amount == Decimal(5)
++    assert Money.of("1.10", "USD").amount == Decimal("1.10")
++
++
++def test_money_rejects_floats_and_bools():
++    with pytest.raises(TypeError):
++        Money.of(1.1, "USD")  # type: ignore[arg-type]
++    with pytest.raises(TypeError):
++        Money.of(True, "USD")  # type: ignore[arg-type]
++
++
++def test_unknown_currency_is_rejected():
++    with pytest.raises(UnknownCurrencyError):
++        Money.of("1", "XYZ")
++
++
++def test_addition_and_subtraction_keep_currency():
++    assert Money.of("1.25", "EUR") + Money.of("2.50", "EUR") == Money.of("3.75", "EUR")
++    assert Money.of("1.25", "EUR") - Money.of("2.50", "EUR") == Money.of("-1.25", "EUR")
++
++
++def test_mixing_currencies_raises():
++    with pytest.raises(CurrencyMismatchError):
++        Money.of("1", "USD") + Money.of("1", "EUR")
++    with pytest.raises(CurrencyMismatchError):
++        _ = Money.of("1", "USD") < Money.of("1", "EUR")
++
++
++def test_multiplication_by_int_and_decimal():
++    assert Money.of("2.50", "USD") * 3 == Money.of("7.50", "USD")
++    assert 3 * Money.of("2.50", "USD") == Money.of("7.50", "USD")
++    assert Money.of("10", "USD") * Decimal("0.075") == Money.of("0.750", "USD")
++    with pytest.raises(TypeError):
++        Money.of("1", "USD") * 1.5  # type: ignore[operator]
++
++
++@pytest.mark.parametrize(
++    ("amount", "currency", "expected"),
++    [
++        ("2.345", "USD", "2.35"),
++        ("2.344", "USD", "2.34"),
++        ("-2.345", "USD", "-2.35"),
++        ("0.005", "USD", "0.01"),
++        ("1234.5", "JPY", "1235"),
++        ("1.2345", "KWD", "1.235"),
++    ],
++)
++def test_quantize_rounds_half_away_from_zero(amount, currency, expected):
++    assert Money.of(amount, currency).quantize().amount == Decimal(expected)
++
++
++def test_minor_unit_per_currency():
++    assert minor_unit("USD") == Decimal("0.01")
++    assert minor_unit("JPY") == Decimal("1")
++    assert minor_unit("KWD") == Decimal("0.001")
++    assert round_half_up(Decimal("0.125"), "USD") == Decimal("0.13")
++
++
++def test_comparisons_and_min_max():
++    a, b = Money.of("1", "USD"), Money.of("2", "USD")
++    assert a < b and b > a and a <= a and b >= b
++    assert a.min(b) == a and a.max(b) == b
++
++
++def test_allocate_even_split():
++    parts = Money.of("9", "USD").allocate([1, 1, 1])
++    assert parts == [Money.of("3.00", "USD")] * 3
++
++
++def test_allocate_gives_leftover_cents_to_largest_remainders():
++    parts = Money.of("10", "USD").allocate([1, 1, 1])
++    assert [p.amount for p in parts] == [Decimal("3.34"), Decimal("3.33"), Decimal("3.33")]
++    assert sum_money(parts, "USD") == Money.of("10.00", "USD")
++
++
++def test_allocate_by_weights_never_loses_a_cent():
++    parts = Money.of("100.00", "USD").allocate([Decimal("19.99"), Decimal("12.50"), Decimal("9.95")])
++    assert sum_money(parts, "USD").amount == Decimal("100.00")
++    assert [p.amount for p in parts] == [Decimal("47.10"), Decimal("29.45"), Decimal("23.45")]
++
++
++def test_allocate_negative_amount_and_zero_weight():
++    parts = Money.of("-1.00", "USD").allocate([1, 0, 2])
++    assert [p.amount for p in parts] == [Decimal("-0.33"), Decimal("0.00"), Decimal("-0.67")]
++
++
++def test_allocate_jpy_uses_whole_units():
++    parts = Money.of("1000", "JPY").allocate([1, 1, 1])
++    assert [p.amount for p in parts] == [Decimal("334"), Decimal("333"), Decimal("333")]
++
++
++def test_allocate_rejects_bad_weights():
++    with pytest.raises(ValueError):
++        Money.of("1", "USD").allocate([])
++    with pytest.raises(ValueError):
++        Money.of("1", "USD").allocate([0, 0])
++    with pytest.raises(ValueError):
++        Money.of("1", "USD").allocate([1, -1])
++
++
++def test_str_shows_rounded_amount():
++    assert str(Money.of("3.456", "USD")) == "USD 3.46"
++    assert str(Money.of("12", "JPY")) == "JPY 12"
++
++
++def test_sum_money_of_empty_list_is_zero():
++    assert sum_money([], "GBP") == Money.zero("GBP")

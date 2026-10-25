@@ -1,0 +1,332 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jedidiah Oladele <66447747+jedidiah-oladele@users.noreply.github.com>
+Date: Mon, 19 Jan 2026 18:40:00 +0100
+Subject: [PATCH 02/11] Add catalog, orders and line items
+
+---
+ src/shopcore/__init__.py |  6 ++++
+ src/shopcore/catalog.py  | 64 ++++++++++++++++++++++++++++++++++++++++
+ src/shopcore/order.py    | 63 +++++++++++++++++++++++++++++++++++++++
+ tests/conftest.py        | 30 +++++++++++++++++++
+ tests/test_catalog.py    | 45 ++++++++++++++++++++++++++++
+ tests/test_order.py      | 44 +++++++++++++++++++++++++++
+ 6 files changed, 252 insertions(+)
+ create mode 100644 src/shopcore/catalog.py
+ create mode 100644 src/shopcore/order.py
+ create mode 100644 tests/conftest.py
+ create mode 100644 tests/test_catalog.py
+ create mode 100644 tests/test_order.py
+
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index 9b0af80..90f6c56 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -1,5 +1,6 @@
+ """shopcore: order pricing, discounts, tax, inventory, payments and CSV import."""
+ 
++from .catalog import Catalog, Product
+ from .clock import Clock, FixedClock, SystemClock
+ from .errors import (
+     CsvFormatError,
+@@ -17,20 +18,25 @@ from .errors import (
+     UnknownSkuError,
+ )
+ from .money import Money, sum_money
++from .order import LineItem, Order
+ 
+ __version__ = "0.9.0"
+ 
+ __all__ = [
++    "Catalog",
+     "Clock",
+     "CsvFormatError",
+     "CurrencyMismatchError",
+     "DiscountError",
+     "FixedClock",
+     "InsufficientStockError",
++    "LineItem",
+     "Money",
++    "Order",
+     "PaymentError",
+     "PaymentRetryExhaustedError",
+     "PermanentPaymentError",
++    "Product",
+     "ReservationError",
+     "ShopcoreError",
+     "SystemClock",
+diff --git a/src/shopcore/catalog.py b/src/shopcore/catalog.py
+new file mode 100644
+index 0000000..668be26
+--- /dev/null
++++ b/src/shopcore/catalog.py
+@@ -0,0 +1,64 @@
++"""Products and the catalog that holds them."""
++
++from __future__ import annotations
++
++from collections.abc import Iterator
++from dataclasses import dataclass
++
++from .errors import UnknownSkuError
++from .money import Money
++
++
++@dataclass(frozen=True, slots=True)
++class Product:
++    sku: str
++    name: str
++    unit_price: Money
++    category: str = "general"
++    tax_category: str = "standard"
++    weight_grams: int = 0
++
++    def __post_init__(self) -> None:
++        if not self.sku or self.sku != self.sku.strip():
++            raise ValueError(f"invalid sku: {self.sku!r}")
++        if self.unit_price.is_negative():
++            raise ValueError(f"{self.sku}: unit price cannot be negative")
++        if self.weight_grams < 0:
++            raise ValueError(f"{self.sku}: weight cannot be negative")
++
++
++class Catalog:
++    """An in-memory product catalog keyed by SKU."""
++
++    def __init__(self, products: list[Product] | None = None) -> None:
++        self._products: dict[str, Product] = {}
++        for product in products or []:
++            self.add(product)
++
++    def add(self, product: Product) -> None:
++        if product.sku in self._products:
++            raise ValueError(f"duplicate sku: {product.sku}")
++        self._products[product.sku] = product
++
++    def replace(self, product: Product) -> None:
++        if product.sku not in self._products:
++            raise UnknownSkuError(product.sku)
++        self._products[product.sku] = product
++
++    def get(self, sku: str) -> Product:
++        try:
++            return self._products[sku]
++        except KeyError:
++            raise UnknownSkuError(sku) from None
++
++    def by_category(self, category: str) -> list[Product]:
++        return [p for p in self._products.values() if p.category == category]
++
++    def __contains__(self, sku: object) -> bool:
++        return sku in self._products
++
++    def __len__(self) -> int:
++        return len(self._products)
++
++    def __iter__(self) -> Iterator[Product]:
++        return iter(self._products.values())
+diff --git a/src/shopcore/order.py b/src/shopcore/order.py
+new file mode 100644
+index 0000000..541af43
+--- /dev/null
++++ b/src/shopcore/order.py
+@@ -0,0 +1,63 @@
++"""Orders and their line items."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++
++from .catalog import Product
++from .errors import CurrencyMismatchError
++from .money import Money, sum_money
++
++
++@dataclass(frozen=True, slots=True)
++class LineItem:
++    product: Product
++    quantity: int
++
++    def __post_init__(self) -> None:
++        if isinstance(self.quantity, bool) or not isinstance(self.quantity, int):
++            raise TypeError("quantity must be an int")
++        if self.quantity <= 0:
++            raise ValueError(f"{self.product.sku}: quantity must be positive")
++
++    @property
++    def sku(self) -> str:
++        return self.product.sku
++
++    @property
++    def gross(self) -> Money:
++        """Unit price times quantity, before discounts and tax."""
++        return self.product.unit_price * self.quantity
++
++    @property
++    def weight_grams(self) -> int:
++        return self.product.weight_grams * self.quantity
++
++
++@dataclass
++class Order:
++    """A mutable shopping order. Pricing happens in :mod:`shopcore.pricing`."""
++
++    currency: str
++    region: str
++    lines: list[LineItem] = field(default_factory=list)
++    coupon_codes: tuple[str, ...] = ()
++
++    def add(self, product: Product, quantity: int = 1) -> None:
++        """Add ``quantity`` units of ``product``, merging with an existing line."""
++        if product.unit_price.currency != self.currency:
++            raise CurrencyMismatchError(self.currency, product.unit_price.currency)
++        for index, line in enumerate(self.lines):
++            if line.sku == product.sku:
++                self.lines[index] = LineItem(product, line.quantity + quantity)
++                return
++        self.lines.append(LineItem(product, quantity))
++
++    def remove(self, sku: str) -> None:
++        self.lines = [line for line in self.lines if line.sku != sku]
++
++    def subtotal(self) -> Money:
++        return sum_money([line.gross for line in self.lines], self.currency)
++
++    def total_weight_grams(self) -> int:
++        return sum(line.weight_grams for line in self.lines)
+diff --git a/tests/conftest.py b/tests/conftest.py
+new file mode 100644
+index 0000000..9ee1040
+--- /dev/null
++++ b/tests/conftest.py
+@@ -0,0 +1,30 @@
++from datetime import UTC, datetime
++from decimal import Decimal
++
++import pytest
++
++from shopcore import Catalog, FixedClock, Money, Product
++
++
++def usd(amount: str) -> Money:
++    return Money(Decimal(amount), "USD")
++
++
++@pytest.fixture
++def clock() -> FixedClock:
++    return FixedClock(datetime(2026, 3, 14, 12, 0, tzinfo=UTC))
++
++
++@pytest.fixture
++def catalog() -> Catalog:
++    return Catalog(
++        [
++            Product("TEE-001", "Plain tee", usd("19.99"), category="apparel", weight_grams=180),
++            Product("MUG-001", "Enamel mug", usd("12.50"), category="kitchen", weight_grams=350),
++            Product(
++                "BEAN-250", "Coffee beans 250g", usd("9.95"), category="grocery", tax_category="food", weight_grams=260
++            ),
++            Product("BOOK-042", "Field guide", usd("24.00"), category="books", tax_category="books", weight_grams=540),
++            Product("GIFT-10", "Gift card", usd("10.00"), category="gift", tax_category="exempt", weight_grams=0),
++        ]
++    )
+diff --git a/tests/test_catalog.py b/tests/test_catalog.py
+new file mode 100644
+index 0000000..00e9c52
+--- /dev/null
++++ b/tests/test_catalog.py
+@@ -0,0 +1,45 @@
++import pytest
++
++from shopcore import Money, Product, UnknownSkuError
++
++
++def test_lookup_and_membership(catalog):
++    assert "TEE-001" in catalog
++    assert catalog.get("MUG-001").name == "Enamel mug"
++    assert len(catalog) == 5
++
++
++def test_unknown_sku_raises_keyerror_subclass(catalog):
++    with pytest.raises(UnknownSkuError) as info:
++        catalog.get("NOPE")
++    assert isinstance(info.value, KeyError)
++    assert str(info.value) == "NOPE"
++
++
++def test_duplicate_sku_rejected(catalog):
++    with pytest.raises(ValueError, match="duplicate"):
++        catalog.add(Product("TEE-001", "Again", Money.of("1", "USD")))
++
++
++def test_replace_requires_existing_sku(catalog):
++    catalog.replace(Product("TEE-001", "Tee v2", Money.of("21", "USD")))
++    assert catalog.get("TEE-001").name == "Tee v2"
++    with pytest.raises(UnknownSkuError):
++        catalog.replace(Product("NEW-1", "New", Money.of("1", "USD")))
++
++
++def test_by_category(catalog):
++    assert [p.sku for p in catalog.by_category("kitchen")] == ["MUG-001"]
++
++
++@pytest.mark.parametrize("sku", ["", " TEE", "TEE "])
++def test_invalid_skus(sku):
++    with pytest.raises(ValueError):
++        Product(sku, "x", Money.of("1", "USD"))
++
++
++def test_negative_price_and_weight_rejected():
++    with pytest.raises(ValueError):
++        Product("A", "x", Money.of("-1", "USD"))
++    with pytest.raises(ValueError):
++        Product("A", "x", Money.of("1", "USD"), weight_grams=-5)
+diff --git a/tests/test_order.py b/tests/test_order.py
+new file mode 100644
+index 0000000..60a497b
+--- /dev/null
++++ b/tests/test_order.py
+@@ -0,0 +1,44 @@
++import pytest
++
++from shopcore import CurrencyMismatchError, LineItem, Money, Order, Product
++
++
++def test_add_merges_lines_for_same_sku(catalog):
++    order = Order("USD", "US-CA")
++    order.add(catalog.get("TEE-001"), 2)
++    order.add(catalog.get("MUG-001"))
++    order.add(catalog.get("TEE-001"), 1)
++    assert [(line.sku, line.quantity) for line in order.lines] == [("TEE-001", 3), ("MUG-001", 1)]
++
++
++def test_subtotal_and_weight(catalog):
++    order = Order("USD", "US-CA")
++    order.add(catalog.get("TEE-001"), 2)
++    order.add(catalog.get("MUG-001"), 1)
++    assert order.subtotal() == Money.of("52.48", "USD")
++    assert order.total_weight_grams() == 710
++
++
++def test_remove_line(catalog):
++    order = Order("USD", "US-CA")
++    order.add(catalog.get("TEE-001"))
++    order.remove("TEE-001")
++    assert order.lines == []
++    assert order.subtotal() == Money.zero("USD")
++
++
++def test_currency_mismatch_on_add():
++    order = Order("EUR", "DE")
++    with pytest.raises(CurrencyMismatchError):
++        order.add(Product("A", "x", Money.of("1", "USD")))
++
++
++@pytest.mark.parametrize("quantity", [0, -1])
++def test_line_quantity_must_be_positive(catalog, quantity):
++    with pytest.raises(ValueError):
++        LineItem(catalog.get("TEE-001"), quantity)
++
++
++def test_line_quantity_must_be_int(catalog):
++    with pytest.raises(TypeError):
++        LineItem(catalog.get("TEE-001"), 1.5)  # type: ignore[arg-type]

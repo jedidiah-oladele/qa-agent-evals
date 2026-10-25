@@ -1,0 +1,165 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jedidiah Oladele <66447747+jedidiah-oladele@users.noreply.github.com>
+Date: Mon, 9 Feb 2026 19:30:00 +0100
+Subject: [PATCH 02/10] Add RateTable for currency conversion
+
+Rates are quoted against a base currency; other pairs use cross rates.
+Conversion rounds once, at the end.
+---
+ src/currency.ts        | 61 +++++++++++++++++++++++++++++++++++++
+ src/index.ts           |  1 +
+ tests/currency.test.ts | 68 ++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 130 insertions(+)
+ create mode 100644 src/currency.ts
+ create mode 100644 tests/currency.test.ts
+
+diff --git a/src/currency.ts b/src/currency.ts
+new file mode 100644
+index 0000000..6033f5e
+--- /dev/null
++++ b/src/currency.ts
+@@ -0,0 +1,61 @@
++import { RateNotFoundError, ValidationError } from "./errors";
++import { type Money, currencyInfo, money } from "./money";
++import { type RoundingMode, roundToInteger } from "./rounding";
++
++/**
++ * Exchange rates quoted against a base currency: `rates[X]` is how many units
++ * of X one unit of `base` buys. Conversions between two non-base currencies
++ * go through the base (a cross rate).
++ */
++export class RateTable {
++  private readonly rates: Map<string, number>;
++
++  constructor(
++    readonly base: string,
++    rates: Readonly<Record<string, number>>,
++    readonly asOf: Date,
++  ) {
++    currencyInfo(base);
++    this.rates = new Map();
++    for (const [code, rate] of Object.entries(rates)) {
++      currencyInfo(code);
++      if (!(rate > 0) || !Number.isFinite(rate)) {
++        throw new ValidationError(`rate for ${code} must be a positive number, got ${rate}`);
++      }
++      this.rates.set(code, rate);
++    }
++    this.rates.set(base, 1);
++  }
++
++  has(code: string): boolean {
++    return this.rates.has(code);
++  }
++
++  private quote(code: string): number {
++    const rate = this.rates.get(code);
++    if (rate === undefined) {
++      throw new RateNotFoundError(`no ${this.base}->${code} rate`);
++    }
++    return rate;
++  }
++
++  /** Units of `to` per one unit of `from`. */
++  rate(from: string, to: string): number {
++    if (from === to) return 1;
++    return this.quote(to) / this.quote(from);
++  }
++
++  /** Convert `amount` into `to`, rounding once at the end. */
++  convert(amount: Money, to: string, mode: RoundingMode = "half-up"): Money {
++    if (amount.currency === to) return amount;
++    const fromExp = currencyInfo(amount.currency).exponent;
++    const toExp = currencyInfo(to).exponent;
++    const value = amount.minor * this.rate(amount.currency, to) * 10 ** (toExp - fromExp);
++    return money(roundToInteger(value, mode), to);
++  }
++
++  /** True when the rates are older than `maxAgeMs` at time `now`. */
++  isStale(now: Date, maxAgeMs: number): boolean {
++    return now.getTime() - this.asOf.getTime() > maxAgeMs;
++  }
++}
+diff --git a/src/index.ts b/src/index.ts
+index 6a95983..1c88386 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -1,3 +1,4 @@
+ export * from "./errors";
+ export * from "./rounding";
+ export * from "./money";
++export * from "./currency";
+diff --git a/tests/currency.test.ts b/tests/currency.test.ts
+new file mode 100644
+index 0000000..82cd629
+--- /dev/null
++++ b/tests/currency.test.ts
+@@ -0,0 +1,68 @@
++import { describe, expect, it } from "vitest";
++import { RateTable } from "../src/currency";
++import { RateNotFoundError, UnknownCurrencyError, ValidationError } from "../src/errors";
++import { money } from "../src/money";
++
++const asOf = new Date("2026-10-01T00:00:00Z");
++const table = new RateTable("USD", { EUR: 0.92, GBP: 0.79, JPY: 151.4, KWD: 0.307 }, asOf);
++
++describe("RateTable.rate", () => {
++  it("is 1 for the same currency and reads direct quotes", () => {
++    expect(table.rate("EUR", "EUR")).toBe(1);
++    expect(table.rate("USD", "EUR")).toBe(0.92);
++  });
++
++  it("inverts quotes into the base currency", () => {
++    expect(table.rate("EUR", "USD")).toBeCloseTo(1 / 0.92, 12);
++  });
++
++  it("computes cross rates through the base", () => {
++    expect(table.rate("EUR", "GBP")).toBeCloseTo(0.79 / 0.92, 12);
++  });
++
++  it("throws for missing rates", () => {
++    expect(() => table.rate("USD", "CHF")).toThrow(RateNotFoundError);
++  });
++});
++
++describe("RateTable.convert", () => {
++  it("converts base to quote currency", () => {
++    expect(table.convert(money(10_000, "USD"), "EUR")).toEqual(money(9_200, "EUR"));
++  });
++
++  it("handles different exponents", () => {
++    expect(table.convert(money(1_000, "USD"), "JPY")).toEqual(money(1_514, "JPY"));
++    expect(table.convert(money(1_514, "JPY"), "USD")).toEqual(money(1_000, "USD"));
++    expect(table.convert(money(1_000, "USD"), "KWD")).toEqual(money(3_070, "KWD"));
++  });
++
++  it("rounds once, at the end", () => {
++    // 1.00 EUR -> GBP: 100 * 0.79 / 0.92 = 85.869... -> 86
++    expect(table.convert(money(100, "EUR"), "GBP").minor).toBe(86);
++    expect(table.convert(money(100, "EUR"), "GBP", "floor").minor).toBe(85);
++  });
++
++  it("returns the same amount for same-currency conversion", () => {
++    const m = money(123, "EUR");
++    expect(table.convert(m, "EUR")).toBe(m);
++  });
++});
++
++describe("RateTable validation and staleness", () => {
++  it("rejects non-positive rates and unknown codes", () => {
++    expect(() => new RateTable("USD", { EUR: 0 }, asOf)).toThrow(ValidationError);
++    expect(() => new RateTable("USD", { EUR: Number.NaN }, asOf)).toThrow(ValidationError);
++    expect(() => new RateTable("USD", { XYZ: 1 }, asOf)).toThrow(UnknownCurrencyError);
++  });
++
++  it("knows the base currency", () => {
++    expect(table.has("USD")).toBe(true);
++    expect(table.has("CHF")).toBe(false);
++  });
++
++  it("reports staleness strictly after the max age", () => {
++    const day = 86_400_000;
++    expect(table.isStale(new Date(asOf.getTime() + day), day)).toBe(false);
++    expect(table.isStale(new Date(asOf.getTime() + day + 1), day)).toBe(true);
++  });
++});

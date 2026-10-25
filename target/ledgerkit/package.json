@@ -1,0 +1,21 @@
+{
+  "name": "ledgerkit",
+  "version": "0.7.0",
+  "description": "Invoices, currency conversion, date-range billing and a small REST client for billing APIs.",
+  "license": "MIT",
+  "author": "Jedidiah Oladele",
+  "type": "module",
+  "main": "src/index.ts",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,39 @@
+[project]
+name = "qa-agent-evals"
+version = "0.1.0"
+description = "An evaluation suite for frontier coding agents doing real QA work in Python and TypeScript codebases."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Jedidiah Oladele" }]
+dependencies = [
+    "pydantic>=2.8",
+    "pyyaml>=6.0",
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "matplotlib>=3.9",
+    "pytest>=8.3",
+    "pytest-randomly>=3.15",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.6"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:randomly"
+markers = [
+    "docker: needs a running Docker daemon (skipped otherwise)",
+    "slow: runs real target test suites",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["target", "tasks", ".history", ".scratch"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

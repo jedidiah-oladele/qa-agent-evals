@@ -1,0 +1,268 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jedidiah Oladele <66447747+jedidiah-oladele@users.noreply.github.com>
+Date: Tue, 7 Apr 2026 11:12:00 +0100
+Subject: [PATCH 07/11] Add product CSV import
+
+Forgiving about layout (header case and spacing, blank lines, column
+order), strict about values. Invalid rows are reported with the line on
+which the record starts.
+---
+ src/shopcore/csv_import.py | 148 +++++++++++++++++++++++++++++++++++++
+ tests/test_csv_import.py   |  93 +++++++++++++++++++++++
+ 2 files changed, 241 insertions(+)
+ create mode 100644 src/shopcore/csv_import.py
+ create mode 100644 tests/test_csv_import.py
+
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+new file mode 100644
+index 0000000..e0c5d27
+--- /dev/null
++++ b/src/shopcore/csv_import.py
+@@ -0,0 +1,148 @@
++"""Import products from CSV exports produced by spreadsheets and other shops.
++
++The importer is forgiving about layout (header case, spacing, blank lines,
++column order) and strict about values. Invalid rows
++are reported with the line on which the record starts and never imported.
++"""
++
++from __future__ import annotations
++
++import csv
++from collections.abc import Iterable
++from dataclasses import dataclass, field
++from decimal import Decimal, InvalidOperation
++from pathlib import Path
++
++from .catalog import Product
++from .errors import CsvFormatError
++from .money import Money, exponent_for
++
++REQUIRED_COLUMNS = ("sku", "name", "price")
++OPTIONAL_COLUMNS = ("category", "tax_category", "weight_grams")
++
++
++@dataclass(frozen=True)
++class RowError:
++    line: int
++    field: str | None
++    message: str
++
++    def __str__(self) -> str:
++        where = f"line {self.line}"
++        return f"{where}: {self.field}: {self.message}" if self.field else f"{where}: {self.message}"
++
++
++@dataclass
++class ImportResult:
++    products: list[Product] = field(default_factory=list)
++    errors: list[RowError] = field(default_factory=list)
++
++    @property
++    def ok(self) -> bool:
++        return not self.errors
++
++
++def normalize_header(name: str) -> str:
++    """``' Unit Price '`` -> ``'unit_price'``."""
++    return name.strip().lower().replace(" ", "_").replace("-", "_")
++
++
++def parse_price(text: str, currency: str) -> Decimal:
++    """Parse a non-negative price such as ``12.50``.
++
++    More decimal places than the currency allows is an error rather than a
++    silent rounding.
++    """
++    cleaned = text.strip()
++    if not cleaned:
++        raise ValueError("price is empty")
++    try:
++        value = Decimal(cleaned)
++    except InvalidOperation:
++        raise ValueError(f"not a number: {text!r}") from None
++    if not value.is_finite():
++        raise ValueError(f"not a number: {text!r}")
++    if value < 0:
++        raise ValueError("price cannot be negative")
++    exponent = value.as_tuple().exponent
++    if isinstance(exponent, int) and -exponent > exponent_for(currency):
++        raise ValueError(f"too many decimal places for {currency}: {text!r}")
++    return value
++
++
++def _parse_weight(text: str) -> int:
++    cleaned = text.strip()
++    if not cleaned:
++        return 0
++    if not cleaned.isdigit():
++        raise ValueError(f"weight must be a whole number of grams, got {text!r}")
++    return int(cleaned)
++
++
++def import_products(source: Iterable[str], *, currency: str = "USD") -> ImportResult:
++    """Import products from an iterable of CSV lines (an open file works)."""
++    reader = csv.reader(source)
++    result = ImportResult()
++
++    header: list[str] | None = None
++    previous_end = 0
++    for row in reader:
++        start_line = previous_end + 1
++        previous_end = reader.line_num
++        if not any(cell.strip() for cell in row):
++            continue
++        if header is None:
++            header = [normalize_header(cell) for cell in row]
++            missing = [c for c in REQUIRED_COLUMNS if c not in header]
++            if missing:
++                raise CsvFormatError(f"missing required column(s): {', '.join(missing)}")
++            seen_skus: dict[str, int] = {}
++            continue
++
++        if len(row) != len(header):
++            result.errors.append(RowError(start_line, None, f"expected {len(header)} fields, got {len(row)}"))
++            continue
++        record = {name: value.strip() for name, value in zip(header, row)}
++        errors_before = len(result.errors)
++
++        sku = record["sku"]
++        if not sku:
++            result.errors.append(RowError(start_line, "sku", "sku is empty"))
++        elif sku in seen_skus:
++            result.errors.append(
++                RowError(start_line, "sku", f"duplicate sku {sku} (first seen on line {seen_skus[sku]})")
++            )
++        if not record["name"]:
++            result.errors.append(RowError(start_line, "name", "name is empty"))
++        try:
++            price = parse_price(record["price"], currency)
++        except ValueError as exc:
++            result.errors.append(RowError(start_line, "price", str(exc)))
++        try:
++            weight = _parse_weight(record.get("weight_grams", ""))
++        except ValueError as exc:
++            result.errors.append(RowError(start_line, "weight_grams", str(exc)))
++
++        if len(result.errors) > errors_before:
++            continue
++        seen_skus[sku] = start_line
++        result.products.append(
++            Product(
++                sku=sku,
++                name=record["name"],
++                unit_price=Money(price, currency),
++                category=record.get("category") or "general",
++                tax_category=record.get("tax_category") or "standard",
++                weight_grams=weight,
++            )
++        )
++
++    if header is None:
++        raise CsvFormatError("file is empty")
++    return result
++
++
++def load_products(path: str | Path, *, currency: str = "USD") -> ImportResult:
++    """Import products from a UTF-8 CSV file on disk."""
++    with open(path, newline="", encoding="utf-8") as handle:
++        return import_products(handle, currency=currency)
+diff --git a/tests/test_csv_import.py b/tests/test_csv_import.py
+new file mode 100644
+index 0000000..3807af3
+--- /dev/null
++++ b/tests/test_csv_import.py
+@@ -0,0 +1,93 @@
++import io
++from decimal import Decimal
++
++import pytest
++
++from shopcore import CsvFormatError
++from shopcore.csv_import import import_products, load_products, normalize_header, parse_price
++
++
++def run(text: str, **kwargs):
++    return import_products(io.StringIO(text), **kwargs)
++
++
++def test_basic_import():
++    result = run("sku,name,price,category,weight_grams\nTEE-1,Tee,19.99,apparel,180\nMUG-1,Mug,12.5,kitchen,\n")
++    assert result.ok
++    assert [p.sku for p in result.products] == ["TEE-1", "MUG-1"]
++    assert result.products[0].unit_price.amount == Decimal("19.99")
++    assert result.products[1].weight_grams == 0
++    assert result.products[1].tax_category == "standard"
++
++
++def test_headers_are_normalized_and_reorderable():
++    result = run(" Price ,SKU,Name,Tax-Category\n3.00,A-1,Thing,food\n")
++    assert result.ok
++    assert result.products[0].tax_category == "food"
++    assert normalize_header(" Weight Grams ") == "weight_grams"
++
++
++def test_missing_required_column():
++    with pytest.raises(CsvFormatError, match="price"):
++        run("sku,name\nA,B\n")
++
++
++def test_empty_file():
++    with pytest.raises(CsvFormatError):
++        run("\n\n")
++
++
++def test_blank_lines_are_skipped_and_line_numbers_are_physical():
++    result = run("sku,name,price\n\nA-1,Thing,1.00\n\nB-1,,2.00\n")
++    assert [p.sku for p in result.products] == ["A-1"]
++    assert [(e.line, e.field) for e in result.errors] == [(5, "name")]
++
++
++def test_row_errors_do_not_stop_the_import():
++    text = "sku,name,price\nA-1,Thing,abc\nB-1,Other,-1\nC-1,Fine,3\nD-1,Cents,1.234\n"
++    result = run(text)
++    assert [p.sku for p in result.products] == ["C-1"]
++    assert [e.line for e in result.errors] == [2, 3, 5]
++    assert "not a number" in result.errors[0].message
++    assert "negative" in result.errors[1].message
++    assert "decimal places" in result.errors[2].message
++
++
++def test_duplicate_sku_reports_first_line():
++    result = run("sku,name,price\nA-1,One,1\nA-1,Two,2\n")
++    assert len(result.products) == 1
++    assert str(result.errors[0]) == "line 3: sku: duplicate sku A-1 (first seen on line 2)"
++
++
++def test_invalid_first_occurrence_does_not_claim_sku():
++    result = run("sku,name,price\nA-1,One,oops\nA-1,Two,2\n")
++    assert [p.name for p in result.products] == ["Two"]
++
++
++def test_wrong_field_count():
++    result = run("sku,name,price\nA-1,One\n")
++    assert str(result.errors[0]) == "line 2: expected 3 fields, got 2"
++
++
++def test_weight_must_be_whole_grams():
++    result = run("sku,name,price,weight_grams\nA-1,One,1,12.5\n")
++    assert result.errors[0].field == "weight_grams"
++
++
++def test_jpy_prices_have_no_decimals():
++    assert run("sku,name,price\nA,B,1200\n", currency="JPY").ok
++    assert not run("sku,name,price\nA,B,1200.5\n", currency="JPY").ok
++
++
++def test_parse_price_rejects_nan_and_empty():
++    with pytest.raises(ValueError):
++        parse_price("NaN", "USD")
++    with pytest.raises(ValueError):
++        parse_price("  ", "USD")
++
++
++def test_load_products_from_disk(tmp_path):
++    path = tmp_path / "products.csv"
++    path.write_text("sku,name,price\nA-1,Café crème,4.50\n", encoding="utf-8")
++    result = load_products(path)
++    assert result.products[0].name == "Café crème"

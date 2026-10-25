@@ -1,0 +1,283 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jedidiah Oladele <66447747+jedidiah-oladele@users.noreply.github.com>
+Date: Tue, 3 Mar 2026 08:51:00 +0100
+Subject: [PATCH 05/11] Add inventory with reservations
+
+Reservations hold stock for a checkout until they are committed or
+released. reserve_many() is all-or-nothing.
+---
+ src/shopcore/__init__.py  |   4 ++
+ src/shopcore/inventory.py | 119 ++++++++++++++++++++++++++++++++++++++
+ tests/test_inventory.py   | 107 ++++++++++++++++++++++++++++++++++
+ 3 files changed, 230 insertions(+)
+ create mode 100644 src/shopcore/inventory.py
+ create mode 100644 tests/test_inventory.py
+
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index 4ca30bf..4446cba 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -24,6 +24,7 @@ from .errors import (
+     UnknownCurrencyError,
+     UnknownSkuError,
+ )
++from .inventory import Inventory, Reservation, ReservationStatus
+ from .money import Money, sum_money
+ from .order import LineItem, Order
+ from .pricing import PricedLine, PricingEngine, Quote
+@@ -43,6 +44,7 @@ __all__ = [
+     "FixedAmountDiscount",
+     "FixedClock",
+     "InsufficientStockError",
++    "Inventory",
+     "LineItem",
+     "Money",
+     "Order",
+@@ -54,7 +56,9 @@ __all__ = [
+     "PricingEngine",
+     "Product",
+     "Quote",
++    "Reservation",
+     "ReservationError",
++    "ReservationStatus",
+     "ShippingPolicy",
+     "ShopcoreError",
+     "SystemClock",
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+new file mode 100644
+index 0000000..239f3b0
+--- /dev/null
++++ b/src/shopcore/inventory.py
+@@ -0,0 +1,119 @@
++"""Stock levels and reservations.
++
++A reservation holds units for a checkout. It is either committed (the units
++leave the warehouse) or released (the units go back).
++"""
++
++from __future__ import annotations
++
++import itertools
++from collections.abc import Mapping
++from dataclasses import dataclass
++from datetime import datetime
++from enum import StrEnum
++
++from .clock import Clock, SystemClock
++from .errors import InsufficientStockError, ReservationError, UnknownSkuError
++
++
++class ReservationStatus(StrEnum):
++    ACTIVE = "active"
++    COMMITTED = "committed"
++    RELEASED = "released"
++
++
++@dataclass
++class Reservation:
++    id: str
++    sku: str
++    quantity: int
++    created_at: datetime
++    status: ReservationStatus = ReservationStatus.ACTIVE
++
++
++class Inventory:
++    def __init__(self, *, clock: Clock | None = None) -> None:
++        self._clock = clock or SystemClock()
++        self._on_hand: dict[str, int] = {}
++        self._reservations: dict[str, Reservation] = {}
++        self._ids = itertools.count(1)
++
++    # -- stock -----------------------------------------------------------
++    def set_stock(self, sku: str, quantity: int) -> None:
++        if quantity < 0:
++            raise ValueError("stock cannot be negative")
++        self._on_hand[sku] = quantity
++
++    def add_stock(self, sku: str, quantity: int) -> None:
++        if quantity <= 0:
++            raise ValueError("quantity must be positive")
++        self._on_hand[sku] = self._on_hand.get(sku, 0) + quantity
++
++    def on_hand(self, sku: str) -> int:
++        try:
++            return self._on_hand[sku]
++        except KeyError:
++            raise UnknownSkuError(sku) from None
++
++    def reserved(self, sku: str) -> int:
++        """Units held by active reservations."""
++        self.on_hand(sku)
++        return sum(
++            r.quantity for r in self._reservations.values() if r.sku == sku and r.status is ReservationStatus.ACTIVE
++        )
++
++    def available(self, sku: str) -> int:
++        return self.on_hand(sku) - self.reserved(sku)
++
++    # -- reservations ----------------------------------------------------
++    def _new_id(self) -> str:
++        return f"RSV-{next(self._ids):06d}"
++
++    def reserve(self, sku: str, quantity: int) -> Reservation:
++        if quantity <= 0:
++            raise ValueError("quantity must be positive")
++        available = self.available(sku)
++        if quantity > available:
++            raise InsufficientStockError(sku, quantity, available)
++        reservation = Reservation(self._new_id(), sku, quantity, self._clock.now())
++        self._reservations[reservation.id] = reservation
++        return reservation
++
++    def reserve_many(self, items: Mapping[str, int]) -> list[Reservation]:
++        """Reserve several SKUs at once. Either every SKU is reserved or none is."""
++        for sku, quantity in items.items():
++            if quantity <= 0:
++                raise ValueError(f"{sku}: quantity must be positive")
++            available = self.available(sku)
++            if quantity > available:
++                raise InsufficientStockError(sku, quantity, available)
++        return [self.reserve(sku, quantity) for sku, quantity in items.items()]
++
++    def get(self, reservation_id: str) -> Reservation:
++        try:
++            return self._reservations[reservation_id]
++        except KeyError:
++            raise ReservationError(f"unknown reservation {reservation_id}") from None
++
++    def release(self, reservation_id: str) -> None:
++        """Give the units back. Releasing twice is a no-op."""
++        reservation = self.get(reservation_id)
++        if reservation.status is ReservationStatus.COMMITTED:
++            raise ReservationError(f"{reservation_id} is already committed")
++        if reservation.status is ReservationStatus.ACTIVE:
++            reservation.status = ReservationStatus.RELEASED
++
++    def commit(self, reservation_id: str) -> None:
++        """Ship the reserved units: they leave ``on_hand`` permanently."""
++        reservation = self.get(reservation_id)
++        if reservation.status is not ReservationStatus.ACTIVE:
++            raise ReservationError(f"{reservation_id} is {reservation.status}, not active")
++        self._on_hand[reservation.sku] -= reservation.quantity
++        reservation.status = ReservationStatus.COMMITTED
++
++    def active_reservations(self, sku: str | None = None) -> list[Reservation]:
++        return [
++            r
++            for r in self._reservations.values()
++            if r.status is ReservationStatus.ACTIVE and (sku is None or r.sku == sku)
++        ]
+diff --git a/tests/test_inventory.py b/tests/test_inventory.py
+new file mode 100644
+index 0000000..bfc5e25
+--- /dev/null
++++ b/tests/test_inventory.py
+@@ -0,0 +1,107 @@
++import pytest
++
++from shopcore import InsufficientStockError, Inventory, ReservationError, ReservationStatus, UnknownSkuError
++
++
++@pytest.fixture
++def inventory(clock):
++    inv = Inventory(clock=clock)
++    inv.set_stock("TEE-001", 10)
++    inv.set_stock("MUG-001", 3)
++    return inv
++
++
++def test_reserve_reduces_availability_not_on_hand(inventory):
++    reservation = inventory.reserve("TEE-001", 4)
++    assert reservation.id == "RSV-000001"
++    assert reservation.status is ReservationStatus.ACTIVE
++    assert inventory.on_hand("TEE-001") == 10
++    assert inventory.reserved("TEE-001") == 4
++    assert inventory.available("TEE-001") == 6
++
++
++def test_reservation_ids_are_sequential(inventory):
++    ids = [inventory.reserve("TEE-001", 1).id for _ in range(3)]
++    assert ids == ["RSV-000001", "RSV-000002", "RSV-000003"]
++
++
++def test_cannot_oversell(inventory):
++    inventory.reserve("MUG-001", 2)
++    with pytest.raises(InsufficientStockError) as info:
++        inventory.reserve("MUG-001", 2)
++    assert (info.value.requested, info.value.available) == (2, 1)
++
++
++def test_unknown_sku(inventory):
++    with pytest.raises(UnknownSkuError):
++        inventory.reserve("NOPE", 1)
++    with pytest.raises(UnknownSkuError):
++        inventory.available("NOPE")
++
++
++@pytest.mark.parametrize("qty", [0, -2])
++def test_reserve_needs_positive_quantity(inventory, qty):
++    with pytest.raises(ValueError):
++        inventory.reserve("TEE-001", qty)
++
++
++def test_release_returns_units_and_is_idempotent(inventory):
++    reservation = inventory.reserve("MUG-001", 3)
++    inventory.release(reservation.id)
++    inventory.release(reservation.id)
++    assert reservation.status is ReservationStatus.RELEASED
++    assert inventory.available("MUG-001") == 3
++
++
++def test_commit_removes_units_from_on_hand(inventory):
++    reservation = inventory.reserve("TEE-001", 4)
++    inventory.commit(reservation.id)
++    assert inventory.on_hand("TEE-001") == 6
++    assert inventory.reserved("TEE-001") == 0
++    assert inventory.available("TEE-001") == 6
++
++
++def test_commit_twice_or_after_release_fails(inventory):
++    a = inventory.reserve("TEE-001", 1)
++    inventory.commit(a.id)
++    with pytest.raises(ReservationError):
++        inventory.commit(a.id)
++    with pytest.raises(ReservationError):
++        inventory.release(a.id)
++    b = inventory.reserve("TEE-001", 1)
++    inventory.release(b.id)
++    with pytest.raises(ReservationError):
++        inventory.commit(b.id)
++
++
++def test_unknown_reservation(inventory):
++    with pytest.raises(ReservationError):
++        inventory.get("RSV-999999")
++
++
++def test_reserve_many_is_all_or_nothing(inventory):
++    with pytest.raises(InsufficientStockError):
++        inventory.reserve_many({"TEE-001": 2, "MUG-001": 4})
++    assert inventory.available("TEE-001") == 10
++    reservations = inventory.reserve_many({"TEE-001": 2, "MUG-001": 3})
++    assert [r.sku for r in reservations] == ["TEE-001", "MUG-001"]
++    assert inventory.available("MUG-001") == 0
++
++
++def test_stock_management(inventory):
++    inventory.add_stock("MUG-001", 2)
++    inventory.add_stock("NEW-1", 1)
++    assert inventory.on_hand("MUG-001") == 5
++    assert inventory.on_hand("NEW-1") == 1
++    with pytest.raises(ValueError):
++        inventory.set_stock("MUG-001", -1)
++    with pytest.raises(ValueError):
++        inventory.add_stock("MUG-001", 0)
++
++
++def test_active_reservations_filter(inventory):
++    a = inventory.reserve("TEE-001", 1)
++    inventory.reserve("MUG-001", 1)
++    inventory.release(a.id)
++    assert [r.sku for r in inventory.active_reservations()] == ["MUG-001"]
++    assert inventory.active_reservations("TEE-001") == []

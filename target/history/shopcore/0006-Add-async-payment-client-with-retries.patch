@@ -1,0 +1,388 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jedidiah Oladele <66447747+jedidiah-oladele@users.noreply.github.com>
+Date: Fri, 20 Mar 2026 14:30:00 +0100
+Subject: [PATCH 06/11] Add async payment client with retries
+
+Transient gateway errors are retried with capped exponential backoff and
+jitter; permanent errors are raised immediately. Ships ScriptedGateway
+and RecordingSleep test doubles.
+---
+ src/shopcore/__init__.py |   5 ++
+ src/shopcore/payments.py | 122 +++++++++++++++++++++++++++++++++++++
+ src/shopcore/testing.py  |  67 +++++++++++++++++++++
+ tests/test_payments.py   | 126 +++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 320 insertions(+)
+ create mode 100644 src/shopcore/payments.py
+ create mode 100644 src/shopcore/testing.py
+ create mode 100644 tests/test_payments.py
+
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index 4446cba..b0545b0 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -27,6 +27,7 @@ from .errors import (
+ from .inventory import Inventory, Reservation, ReservationStatus
+ from .money import Money, sum_money
+ from .order import LineItem, Order
++from .payments import ChargeRequest, ChargeResult, PaymentClient, RetryPolicy
+ from .pricing import PricedLine, PricingEngine, Quote
+ from .shipping import ShippingPolicy, WeightTier
+ from .tax import TaxRegion, TaxRounding, TaxTable, default_tax_table
+@@ -36,6 +37,8 @@ __version__ = "0.9.0"
+ __all__ = [
+     "AppliedDiscount",
+     "Catalog",
++    "ChargeRequest",
++    "ChargeResult",
+     "Clock",
+     "CsvFormatError",
+     "CurrencyMismatchError",
+@@ -48,6 +51,7 @@ __all__ = [
+     "LineItem",
+     "Money",
+     "Order",
++    "PaymentClient",
+     "PaymentError",
+     "PaymentRetryExhaustedError",
+     "PercentageDiscount",
+@@ -59,6 +63,7 @@ __all__ = [
+     "Reservation",
+     "ReservationError",
+     "ReservationStatus",
++    "RetryPolicy",
+     "ShippingPolicy",
+     "ShopcoreError",
+     "SystemClock",
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+new file mode 100644
+index 0000000..e91ca56
+--- /dev/null
++++ b/src/shopcore/payments.py
+@@ -0,0 +1,122 @@
++"""Async payment capture with retries and backoff.
++
++The gateway is any object with an async ``charge`` method. Transient errors
++are retried with exponential backoff and jitter; permanent errors are raised
++straight away.
++"""
++
++from __future__ import annotations
++
++import asyncio
++import random
++from collections.abc import Awaitable, Callable, Sequence
++from dataclasses import dataclass
++from typing import Protocol
++
++from .errors import PaymentError, PaymentRetryExhaustedError, PermanentPaymentError, TransientPaymentError
++from .money import Money
++
++
++class PaymentGateway(Protocol):
++    async def charge(self, amount: Money, token: str) -> str:
++        """Capture ``amount`` and return the gateway's charge id."""
++        ...
++
++
++@dataclass(frozen=True)
++class ChargeRequest:
++    amount: Money
++    token: str
++
++
++@dataclass(frozen=True)
++class ChargeResult:
++    charge_id: str
++    amount: Money
++    attempts: int
++
++
++@dataclass(frozen=True)
++class RetryPolicy:
++    """Exponential backoff: ``base_delay * multiplier**(n-1)``, capped, with jitter.
++
++    ``jitter`` is a fraction: 0.1 means each delay is scaled by a random factor
++    in [0.9, 1.1]. The cap is applied before jitter.
++    """
++
++    max_attempts: int = 4
++    base_delay: float = 0.2
++    multiplier: float = 2.0
++    max_delay: float = 5.0
++    jitter: float = 0.1
++
++    def __post_init__(self) -> None:
++        if self.max_attempts < 1:
++            raise ValueError("max_attempts must be at least 1")
++        if self.base_delay < 0 or self.max_delay < 0:
++            raise ValueError("delays cannot be negative")
++        if not (0 <= self.jitter < 1):
++            raise ValueError("jitter must be in [0, 1)")
++
++    def delay_for(self, retry_number: int, rng: random.Random) -> float:
++        """Delay before retry number ``retry_number`` (1 = first retry)."""
++        if retry_number < 1:
++            raise ValueError("retry_number starts at 1")
++        delay = min(self.base_delay * self.multiplier ** (retry_number - 1), self.max_delay)
++        if self.jitter:
++            delay *= 1 + rng.uniform(-self.jitter, self.jitter)
++        return delay
++
++
++class PaymentClient:
++    def __init__(
++        self,
++        gateway: PaymentGateway,
++        policy: RetryPolicy | None = None,
++        *,
++        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
++        rng: random.Random | None = None,
++    ) -> None:
++        self.gateway = gateway
++        self.policy = policy or RetryPolicy()
++        self._sleep = sleep
++        self._rng = rng or random.Random()
++
++    async def charge(self, amount: Money, token: str) -> ChargeResult:
++        if amount.is_negative() or amount.is_zero():
++            raise ValueError("charge amount must be positive")
++        last_error: TransientPaymentError | None = None
++        for attempt in range(1, self.policy.max_attempts + 1):
++            try:
++                charge_id = await self.gateway.charge(amount, token)
++            except PermanentPaymentError:
++                raise
++            except TransientPaymentError as exc:
++                last_error = exc
++                if attempt < self.policy.max_attempts:
++                    await self._sleep(self.policy.delay_for(attempt, self._rng))
++                continue
++            return ChargeResult(charge_id, amount, attempt)
++        assert last_error is not None
++        raise PaymentRetryExhaustedError(self.policy.max_attempts, last_error)
++
++    async def charge_many(
++        self, requests: Sequence[ChargeRequest], *, concurrency: int = 4
++    ) -> list[ChargeResult | PaymentError]:
++        """Charge several requests concurrently; results keep the input order.
++
++        Payment errors are returned in place of a result instead of raised, so
++        one declined card does not hide the outcome of the others.
++        """
++        if concurrency < 1:
++            raise ValueError("concurrency must be at least 1")
++        semaphore = asyncio.Semaphore(concurrency)
++
++        async def one(request: ChargeRequest) -> ChargeResult | PaymentError:
++            async with semaphore:
++                try:
++                    return await self.charge(request.amount, request.token)
++                except PaymentError as exc:
++                    return exc
++
++        return list(await asyncio.gather(*(one(r) for r in requests)))
+diff --git a/src/shopcore/testing.py b/src/shopcore/testing.py
+new file mode 100644
+index 0000000..c6ca4fa
+--- /dev/null
++++ b/src/shopcore/testing.py
+@@ -0,0 +1,67 @@
++"""Test doubles shipped with shopcore so applications can test checkout flows."""
++
++from __future__ import annotations
++
++from collections.abc import Sequence
++from dataclasses import dataclass, field
++
++from .errors import PermanentPaymentError, TransientPaymentError
++from .money import Money
++
++
++class CapturedThenTimeout(TransientPaymentError):
++    """The gateway captured the money but the response never arrived."""
++
++
++@dataclass
++class GatewayCall:
++    amount: Money
++    token: str
++
++
++@dataclass
++class ScriptedGateway:
++    """A fake gateway that replays a script of outcomes, one per call.
++
++    Each outcome is ``"ok"``, ``"timeout"`` (transient, nothing captured),
++    ``"captured_timeout"`` (money captured, then a transient error) or
++    ``"declined"`` (permanent). When the script runs out every further call
++    succeeds.
++    """
++
++    script: Sequence[str] = ()
++    calls: list[GatewayCall] = field(default_factory=list)
++    captures: list[tuple[str, Money]] = field(default_factory=list)
++    _position: int = 0
++
++    async def charge(self, amount: Money, token: str) -> str:
++        self.calls.append(GatewayCall(amount, token))
++        outcome = self.script[self._position] if self._position < len(self.script) else "ok"
++        self._position += 1
++        if outcome == "timeout":
++            raise TransientPaymentError("gateway timeout")
++        if outcome == "declined":
++            raise PermanentPaymentError("card declined")
++        charge_id = f"ch_{len(self.captures) + 1:04d}"
++        self.captures.append((charge_id, amount))
++        if outcome == "captured_timeout":
++            raise CapturedThenTimeout("gateway timeout after capture")
++        if outcome != "ok":
++            raise ValueError(f"unknown scripted outcome {outcome!r}")
++        return charge_id
++
++    def captured_total(self, currency: str) -> Money:
++        total = Money.zero(currency)
++        for _, amount in self.captures:
++            total = total + amount
++        return total
++
++
++@dataclass
++class RecordingSleep:
++    """An async ``sleep`` replacement that records delays instead of waiting."""
++
++    delays: list[float] = field(default_factory=list)
++
++    async def __call__(self, seconds: float) -> None:
++        self.delays.append(seconds)
+diff --git a/tests/test_payments.py b/tests/test_payments.py
+new file mode 100644
+index 0000000..b1b9f89
+--- /dev/null
++++ b/tests/test_payments.py
+@@ -0,0 +1,126 @@
++import asyncio
++import random
++
++import pytest
++
++from shopcore import (
++    ChargeRequest,
++    Money,
++    PaymentClient,
++    PaymentRetryExhaustedError,
++    PermanentPaymentError,
++    RetryPolicy,
++)
++from shopcore.testing import RecordingSleep, ScriptedGateway
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++def make_client(script, policy=None):
++    gateway = ScriptedGateway(script)
++    sleep = RecordingSleep()
++    client = PaymentClient(gateway, policy or RetryPolicy(jitter=0), sleep=sleep, rng=random.Random(7))
++    return client, gateway, sleep
++
++
++def test_successful_first_attempt():
++    client, gateway, sleep = make_client([])
++    result = asyncio.run(client.charge(usd("10"), "tok_visa"))
++    assert result.charge_id == "ch_0001"
++    assert result.attempts == 1
++    assert sleep.delays == []
++    assert len(gateway.calls) == 1
++
++
++def test_transient_errors_are_retried_with_exponential_backoff():
++    client, gateway, sleep = make_client(["timeout", "timeout", "ok"])
++    result = asyncio.run(client.charge(usd("10"), "tok_visa"))
++    assert result.attempts == 3
++    assert sleep.delays == pytest.approx([0.2, 0.4])
++
++
++def test_permanent_error_is_not_retried():
++    client, gateway, sleep = make_client(["declined"])
++    with pytest.raises(PermanentPaymentError):
++        asyncio.run(client.charge(usd("10"), "tok_visa"))
++    assert len(gateway.calls) == 1
++    assert sleep.delays == []
++
++
++def test_retries_exhausted():
++    client, gateway, sleep = make_client(["timeout"] * 4)
++    with pytest.raises(PaymentRetryExhaustedError) as info:
++        asyncio.run(client.charge(usd("10"), "tok_visa"))
++    assert info.value.attempts == 4
++    assert len(gateway.calls) == 4
++    assert len(sleep.delays) == 3  # no sleep after the final attempt
++
++
++def test_backoff_is_capped():
++    policy = RetryPolicy(max_attempts=6, base_delay=1, multiplier=3, max_delay=5, jitter=0)
++    rng = random.Random(0)
++    assert [policy.delay_for(n, rng) for n in range(1, 6)] == [1, 3, 5, 5, 5]
++
++
++def test_jitter_stays_within_bounds():
++    policy = RetryPolicy(base_delay=1, jitter=0.25)
++    rng = random.Random(42)
++    delays = [policy.delay_for(1, rng) for _ in range(200)]
++    assert all(0.75 <= d <= 1.25 for d in delays)
++    assert len(set(delays)) > 1
++
++
++@pytest.mark.parametrize(
++    "kwargs", [{"max_attempts": 0}, {"base_delay": -1}, {"jitter": 1}, {"jitter": -0.1}]
++)
++def test_invalid_policy(kwargs):
++    with pytest.raises(ValueError):
++        RetryPolicy(**kwargs)
++
++
++def test_delay_for_needs_positive_retry_number():
++    with pytest.raises(ValueError):
++        RetryPolicy().delay_for(0, random.Random())
++
++
++@pytest.mark.parametrize("amount", ["0", "-1"])
++def test_amount_must_be_positive(amount):
++    client, _, _ = make_client([])
++    with pytest.raises(ValueError):
++        asyncio.run(client.charge(usd(amount), "tok"))
++
++
++def test_charge_many_keeps_order_and_returns_errors_in_place():
++    client, gateway, _ = make_client(["ok", "declined", "ok"])
++    requests = [ChargeRequest(usd(str(n)), f"tok_{n}") for n in (1, 2, 3)]
++    results = asyncio.run(client.charge_many(requests, concurrency=1))
++    assert [type(r).__name__ for r in results] == ["ChargeResult", "PermanentPaymentError", "ChargeResult"]
++    assert results[0].amount == usd("1") and results[2].amount == usd("3")
++
++
++def test_charge_many_respects_concurrency_limit():
++    in_flight = 0
++    peak = 0
++
++    class SlowGateway:
++        async def charge(self, amount, token, idempotency_key=None):
++            nonlocal in_flight, peak
++            in_flight += 1
++            peak = max(peak, in_flight)
++            await asyncio.sleep(0)
++            in_flight -= 1
++            return f"ch_{token}"
++
++    client = PaymentClient(SlowGateway())
++    requests = [ChargeRequest(usd("1"), str(n)) for n in range(10)]
++    results = asyncio.run(client.charge_many(requests, concurrency=3))
++    assert [r.charge_id for r in results] == [f"ch_{n}" for n in range(10)]
++    assert peak == 3
++
++
++def test_charge_many_validates_concurrency():
++    client, _, _ = make_client([])
++    with pytest.raises(ValueError):
++        asyncio.run(client.charge_many([], concurrency=0))
