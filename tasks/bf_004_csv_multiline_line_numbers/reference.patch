@@ -1,0 +1,73 @@
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index 6bad6fc..5dd7f6d 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -92,7 +92,11 @@ def import_products(source: Iterable[str], *, currency: str = "USD") -> ImportRe
+     result = ImportResult()
+ 
+     header: list[str] | None = None
++    previous_end = 0
+     for row in reader:
++        # A quoted cell can span several physical lines; reader.line_num is where the record ends.
++        start_line = previous_end + 1
++        previous_end = reader.line_num
+         if not any(cell.strip() for cell in row):
+             continue
+         if header is None:
+@@ -104,32 +108,32 @@ def import_products(source: Iterable[str], *, currency: str = "USD") -> ImportRe
+             continue
+ 
+         if len(row) != len(header):
+-            result.errors.append(RowError(reader.line_num, None, f"expected {len(header)} fields, got {len(row)}"))
++            result.errors.append(RowError(start_line, None, f"expected {len(header)} fields, got {len(row)}"))
+             continue
+         record = {name: value.strip() for name, value in zip(header, row)}
+         errors_before = len(result.errors)
+ 
+         sku = record["sku"]
+         if not sku:
+-            result.errors.append(RowError(reader.line_num, "sku", "sku is empty"))
++            result.errors.append(RowError(start_line, "sku", "sku is empty"))
+         elif sku in seen_skus:
+             result.errors.append(
+-                RowError(reader.line_num, "sku", f"duplicate sku {sku} (first seen on line {seen_skus[sku]})")
++                RowError(start_line, "sku", f"duplicate sku {sku} (first seen on line {seen_skus[sku]})")
+             )
+         if not record["name"]:
+-            result.errors.append(RowError(reader.line_num, "name", "name is empty"))
++            result.errors.append(RowError(start_line, "name", "name is empty"))
+         try:
+             price = parse_price(record["price"], currency)
+         except ValueError as exc:
+-            result.errors.append(RowError(reader.line_num, "price", str(exc)))
++            result.errors.append(RowError(start_line, "price", str(exc)))
+         try:
+             weight = _parse_weight(record.get("weight_grams", ""))
+         except ValueError as exc:
+-            result.errors.append(RowError(reader.line_num, "weight_grams", str(exc)))
++            result.errors.append(RowError(start_line, "weight_grams", str(exc)))
+ 
+         if len(result.errors) > errors_before:
+             continue
+-        seen_skus[sku] = reader.line_num
++        seen_skus[sku] = start_line
+         result.products.append(
+             Product(
+                 sku=sku,
+diff --git a/tests/test_csv_import.py b/tests/test_csv_import.py
+index 3807af3..72dbd55 100644
+--- a/tests/test_csv_import.py
++++ b/tests/test_csv_import.py
+@@ -91,3 +91,12 @@ def test_load_products_from_disk(tmp_path):
+     path.write_text("sku,name,price\nA-1,Café crème,4.50\n", encoding="utf-8")
+     result = load_products(path)
+     assert result.products[0].name == "Café crème"
++
++
++def test_multiline_record_errors_use_the_line_the_record_starts_on():
++    text = 'sku,name,price\nA-1,"Desk lamp\n(warm white)\ndimmable",oops\nA-2,"Two\nlines",1\nA-2,Again,1\n'
++    result = run(text)
++    assert [str(e) for e in result.errors] == [
++        "line 2: price: not a number: 'oops'",
++        "line 7: sku: duplicate sku A-2 (first seen on line 5)",
++    ]

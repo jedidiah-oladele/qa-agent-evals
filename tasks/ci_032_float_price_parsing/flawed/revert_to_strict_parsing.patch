@@ -1,0 +1,52 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..6193582
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,3 @@
++Root cause: the zero-padding change made parse_price go through float.
++Floats cannot represent 19.99 exactly.
++Reverted parse_price to the previous Decimal implementation.
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index f8007e0..e081c0f 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -8,11 +8,10 @@ are reported with the line on which the record starts and never imported.
+ from __future__ import annotations
+ 
+ import csv
+-import math
+ import re
+ from collections.abc import Iterable
+ from dataclasses import dataclass, field
+-from decimal import Decimal
++from decimal import Decimal, InvalidOperation
+ from pathlib import Path
+ 
+ from .catalog import Product
+@@ -68,18 +67,17 @@ def parse_price(text: str, currency: str) -> Decimal:
+             raise ValueError(f"malformed thousands separators in {text!r}")
+         cleaned = cleaned.replace(",", "")
+     try:
+-        number = float(cleaned)
+-    except ValueError:
++        value = Decimal(cleaned)
++    except InvalidOperation:
+         raise ValueError(f"not a number: {text!r}") from None
+-    if not math.isfinite(number):
++    if not value.is_finite():
+         raise ValueError(f"not a number: {text!r}")
+-    if number < 0:
++    if value < 0:
+         raise ValueError("price cannot be negative")
+-    places = exponent_for(currency)
+-    rounded = round(number, places)
+-    if rounded != number:
++    exponent = value.as_tuple().exponent
++    if isinstance(exponent, int) and -exponent > exponent_for(currency):
+         raise ValueError(f"too many decimal places for {currency}: {text!r}")
+-    return Decimal(rounded)
++    return value
+ 
+ 
+ def _parse_weight(text: str) -> int:

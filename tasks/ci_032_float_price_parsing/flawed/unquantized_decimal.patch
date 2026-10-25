@@ -1,0 +1,57 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..e6b4c1f
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,3 @@
++Root cause: parse_price converted prices through float.
++Decimal(float) keeps the binary error, e.g. 19.989999...
++Now parsed with Decimal and checked against the minor unit.
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index f8007e0..1744c7e 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -8,16 +8,15 @@ are reported with the line on which the record starts and never imported.
+ from __future__ import annotations
+ 
+ import csv
+-import math
+ import re
+ from collections.abc import Iterable
+ from dataclasses import dataclass, field
+-from decimal import Decimal
++from decimal import Decimal, InvalidOperation
+ from pathlib import Path
+ 
+ from .catalog import Product
+ from .errors import CsvFormatError
+-from .money import Money, exponent_for
++from .money import Money, minor_unit
+ 
+ REQUIRED_COLUMNS = ("sku", "name", "price")
+ OPTIONAL_COLUMNS = ("category", "tax_category", "weight_grams")
+@@ -68,18 +67,16 @@ def parse_price(text: str, currency: str) -> Decimal:
+             raise ValueError(f"malformed thousands separators in {text!r}")
+         cleaned = cleaned.replace(",", "")
+     try:
+-        number = float(cleaned)
+-    except ValueError:
++        value = Decimal(cleaned)
++    except InvalidOperation:
+         raise ValueError(f"not a number: {text!r}") from None
+-    if not math.isfinite(number):
++    if not value.is_finite():
+         raise ValueError(f"not a number: {text!r}")
+-    if number < 0:
++    if value < 0:
+         raise ValueError("price cannot be negative")
+-    places = exponent_for(currency)
+-    rounded = round(number, places)
+-    if rounded != number:
++    if value != value.quantize(minor_unit(currency)):
+         raise ValueError(f"too many decimal places for {currency}: {text!r}")
+-    return Decimal(rounded)
++    return value
+ 
+ 
+ def _parse_weight(text: str) -> int:

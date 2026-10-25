@@ -1,0 +1,27 @@
+diff --git a/src/money.ts b/src/money.ts
+index ff57105..43ec1ae 100644
+--- a/src/money.ts
++++ b/src/money.ts
+@@ -63,7 +63,8 @@ export function fromDecimal(text: string, currency: string): Money {
+ /** Format minor units back into a plain decimal string ("-0.05", "1200"). */
+ export function toDecimal(m: Money): string {
+   const { exponent } = currencyInfo(m.currency);
+-  const digits = Math.abs(m.minor).toString().padStart(exponent + 1, "0");
++  // Pad so there is always a whole-number digit in front of the fraction ("5" -> "005" -> "0.05").
++  const digits = Math.abs(m.minor).toString().padStart(3, "0");
+   const sign = m.minor < 0 ? "-" : "";
+   if (exponent === 0) {
+     return sign + digits;
+diff --git a/tests/money.test.ts b/tests/money.test.ts
+index a485b4b..aefad3a 100644
+--- a/tests/money.test.ts
++++ b/tests/money.test.ts
+@@ -57,7 +57,7 @@ describe("fromDecimal / toDecimal", () => {
+     [5, "USD", "0.05"],
+     [-5, "USD", "-0.05"],
+     [1200, "JPY", "1200"],
+-    [7, "KWD", "0.007"],
++    [7_250, "KWD", "7.250"],
+   ])("formats %d %s as %s", (minor, currency, text) => {
+     expect(toDecimal(money(minor, currency))).toBe(text);
+   });

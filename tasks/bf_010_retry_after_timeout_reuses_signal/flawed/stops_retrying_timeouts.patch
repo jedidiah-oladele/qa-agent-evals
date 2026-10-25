@@ -1,0 +1,20 @@
+diff --git a/src/client.ts b/src/client.ts
+index ce6d576..72351c9 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -137,9 +137,12 @@ export class LedgerClient {
+           response = await this.fetchImpl(url, { method, headers, body, signal: controller.signal });
+         } catch (error) {
+           if (options.signal?.aborted) throw cancelled();
+-          const failure = controller.signal.aborted
+-            ? new TimeoutError(`${method} ${path} timed out after ${this.timeoutMs}ms`)
+-            : new NetworkError(`${method} ${path} failed: ${(error as Error).message}`);
++          // The controller is aborted for good once an attempt times out, so a
++          // retry could never succeed: report the timeout straight away.
++          if (controller.signal.aborted) {
++            throw new TimeoutError(`${method} ${path} timed out after ${this.timeoutMs}ms`);
++          }
++          const failure = new NetworkError(`${method} ${path} failed: ${(error as Error).message}`);
+           if (!canRetry) throw failure;
+           await this.sleep(this.backoff(attempt));
+           continue;

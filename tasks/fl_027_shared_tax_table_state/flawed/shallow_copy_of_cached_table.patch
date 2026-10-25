@@ -1,0 +1,21 @@
+diff --git a/src/shopcore/tax.py b/src/shopcore/tax.py
+index 3a0a099..2ab7a64 100644
+--- a/src/shopcore/tax.py
++++ b/src/shopcore/tax.py
+@@ -7,6 +7,7 @@ contains tax, which is extracted for reporting).
+ 
+ from __future__ import annotations
+ 
++import copy
+ from collections.abc import Iterable, Sequence
+ from dataclasses import dataclass, field
+ from decimal import Decimal
+@@ -111,7 +112,7 @@ def default_tax_table() -> TaxTable:
+     Built once at import time: pricing engines are created per request and the
+     regions never change, so there is no point rebuilding the table every time.
+     """
+-    return _DEFAULT_TABLE
++    return copy.copy(_DEFAULT_TABLE)
+ 
+ 
+ def unrounded_tax(net: Money, rate: Decimal, *, inclusive: bool) -> Decimal:

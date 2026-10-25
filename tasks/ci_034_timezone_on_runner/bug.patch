@@ -1,0 +1,140 @@
+diff --git a/ci/build-1187.log b/ci/build-1187.log
+new file mode 100644
+index 0000000..fc2f8d0
+--- /dev/null
++++ b/ci/build-1187.log
+@@ -0,0 +1,113 @@
++2026-10-23T14:52:58.1043127Z Requested labels: ubuntu-24.04
++2026-10-23T14:52:58.1043590Z Job defined at: ledgerkit/.github/workflows/ci.yml@refs/heads/main
++2026-10-23T14:52:58.1043911Z Waiting for a runner to pick up this job...
++2026-10-23T14:52:59.0218734Z Job is about to start running on the runner: shared-runner-nyc-07 (organization)
++2026-10-23T14:53:01.2201457Z ##[group]Runner Image
++2026-10-23T14:53:01.2201852Z Image: ubuntu-24.04
++2026-10-23T14:53:01.2202016Z Version: 20261019.1
++2026-10-23T14:53:01.2202270Z ##[endgroup]
++2026-10-23T14:53:01.2210333Z ##[group]Job: test (node 22)
++2026-10-23T14:53:01.2210611Z Workflow: ci  Run: #1187  Event: push  Ref: refs/heads/main  Commit: 4be09d2
++2026-10-23T14:53:01.2210947Z Commit message: "dates: let Date handle rollover in addDays (#58)"
++2026-10-23T14:53:01.2211208Z ##[endgroup]
++2026-10-23T14:53:01.4417512Z ##[group]Run actions/checkout@v4
++2026-10-23T14:53:02.0081734Z Syncing repository: ledgerkit
++2026-10-23T14:53:02.6179023Z HEAD is now at 4be09d2 dates: let Date handle rollover in addDays (#58)
++2026-10-23T14:53:02.6233105Z ##[endgroup]
++2026-10-23T14:53:02.6390111Z ##[group]Run actions/setup-node@v4
++2026-10-23T14:53:02.6390440Z with:
++2026-10-23T14:53:02.6390602Z   node-version: 22
++2026-10-23T14:53:02.6390765Z   cache: npm
++2026-10-23T14:53:03.1288814Z Found in cache @ /opt/hostedtoolcache/node/22.12.0/x64
++2026-10-23T14:53:03.1325563Z ##[endgroup]
++2026-10-23T14:53:03.1478227Z ##[group]Environment
++2026-10-23T14:53:03.1478581Z   CI: true
++2026-10-23T14:53:03.1478703Z   NODE_ENV: test
++2026-10-23T14:53:03.1478860Z   TZ: America/New_York
++2026-10-23T14:53:03.1479011Z   LANG: en_US.UTF-8
++2026-10-23T14:53:03.1479165Z ##[endgroup]
++2026-10-23T14:53:03.1622095Z ##[group]Run npm ci
++2026-10-23T14:53:06.9014417Z added 38 packages, and audited 39 packages in 4s
++2026-10-23T14:53:06.9015120Z found 0 vulnerabilities
++2026-10-23T14:53:06.9201189Z ##[endgroup]
++2026-10-23T14:53:06.9318836Z ##[group]Run npm run typecheck
++2026-10-23T14:53:07.1206630Z > ledgerkit@0.7.0 typecheck
++2026-10-23T14:53:07.1207005Z > tsc --noEmit
++2026-10-23T14:53:09.8811072Z ##[endgroup]
++2026-10-23T14:53:09.8930515Z ##[group]Run npm test
++2026-10-23T14:53:10.0703187Z > ledgerkit@0.7.0 test
++2026-10-23T14:53:10.0703561Z > vitest run
++2026-10-23T14:53:10.0703744Z
++2026-10-23T14:53:10.6412018Z  RUN  v5.0.5 /home/runner/work/ledgerkit/ledgerkit
++2026-10-23T14:53:10.6412455Z
++2026-10-23T14:53:10.9580021Z  ❯ tests/dates.test.ts (16 tests | 1 failed) 12ms
++2026-10-23T14:53:10.9580398Z    ❯ arithmetic (7)
++2026-10-23T14:53:10.9580611Z      × adds days across month and year ends 5ms
++2026-10-23T14:53:10.9817702Z  ❯ tests/invoice.test.ts (16 tests | 2 failed) 20ms
++2026-10-23T14:53:10.9818056Z    ❯ Invoice lifecycle (6)
++2026-10-23T14:53:10.9818270Z      × issues with a number and due date 8ms
++2026-10-23T14:53:10.9818466Z      × is overdue only after the due date while unpaid 2ms
++2026-10-23T14:53:10.9902215Z
++2026-10-23T14:53:10.9902533Z ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
++2026-10-23T14:53:10.9902730Z
++2026-10-23T14:53:10.9902897Z  FAIL  tests/dates.test.ts > arithmetic > adds days across month and year ends
++2026-10-23T14:53:10.9903126Z AssertionError: expected '2026-12-31' to be '2027-01-01' // Object.is equality
++2026-10-23T14:53:10.9903301Z
++2026-10-23T14:53:10.9903442Z Expected: "2027-01-01"
++2026-10-23T14:53:10.9903590Z Received: "2026-12-31"
++2026-10-23T14:53:10.9903728Z
++2026-10-23T14:53:10.9903871Z  ❯ tests/dates.test.ts:48:38
++2026-10-23T14:53:10.9904019Z      46| describe("arithmetic", () => {
++2026-10-23T14:53:10.9904168Z      47|   it("adds days across month and year ends", () => {
++2026-10-23T14:53:10.9904320Z      48|     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
++2026-10-23T14:53:10.9904469Z        |                                      ^
++2026-10-23T14:53:10.9904615Z      49|     expect(addDays("2024-02-28", 1)).toBe("2024-02-29");
++2026-10-23T14:53:10.9904763Z      50|     expect(addDays("2026-03-01", -1)).toBe("2026-02-28");
++2026-10-23T14:53:10.9904912Z
++2026-10-23T14:53:10.9905061Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
++2026-10-23T14:53:10.9905209Z
++2026-10-23T14:53:10.9905352Z  FAIL  tests/invoice.test.ts > Invoice lifecycle > issues with a number and due date
++2026-10-23T14:53:10.9905503Z AssertionError: expected '2026-11-02' to be '2026-11-03' // Object.is equality
++2026-10-23T14:53:10.9905650Z
++2026-10-23T14:53:10.9905792Z Expected: "2026-11-03"
++2026-10-23T14:53:10.9905939Z Received: "2026-11-02"
++2026-10-23T14:53:10.9906077Z
++2026-10-23T14:53:10.9906221Z  ❯ tests/invoice.test.ts:79:27
++2026-10-23T14:53:10.9906370Z      77|     expect(invoice.status).toBe("issued");
++2026-10-23T14:53:10.9906517Z      78|     expect(invoice.number).toBe("INV-2026-0001");
++2026-10-23T14:53:10.9906665Z      79|     expect(invoice.dueOn).toBe("2026-11-03");
++2026-10-23T14:53:10.9906812Z        |                           ^
++2026-10-23T14:53:10.9906958Z      80|   });
++2026-10-23T14:53:10.9907103Z      81|
++2026-10-23T14:53:10.9907249Z
++2026-10-23T14:53:10.9907392Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
++2026-10-23T14:53:10.9907540Z
++2026-10-23T14:53:10.9907684Z  FAIL  tests/invoice.test.ts > Invoice lifecycle > is overdue only after the due date while unpaid
++2026-10-23T14:53:10.9907833Z AssertionError: expected true to be false // Object.is equality
++2026-10-23T14:53:10.9907980Z
++2026-10-23T14:53:10.9908122Z - Expected
++2026-10-23T14:53:10.9908267Z + Received
++2026-10-23T14:53:10.9908409Z
++2026-10-23T14:53:10.9908553Z - false
++2026-10-23T14:53:10.9908697Z + true
++2026-10-23T14:53:10.9908839Z
++2026-10-23T14:53:10.9908983Z  ❯ tests/invoice.test.ts:122:45
++2026-10-23T14:53:10.9909131Z     120|     expect(invoice.isOverdue("2030-01-01")).toBe(false);
++2026-10-23T14:53:10.9909278Z     121|     invoice.issue("INV-1", "2026-01-01");
++2026-10-23T14:53:10.9909425Z     122|     expect(invoice.isOverdue("2026-01-15")).toBe(false);
++2026-10-23T14:53:10.9909573Z        |                                             ^
++2026-10-23T14:53:10.9909720Z     123|     expect(invoice.isOverdue("2026-01-16")).toBe(true);
++2026-10-23T14:53:10.9909867Z     124|     invoice.recordPayment(invoice.balance, "2026-01-20");
++2026-10-23T14:53:10.9910013Z
++2026-10-23T14:53:10.9910157Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
++2026-10-23T14:53:10.9910302Z
++2026-10-23T14:53:10.9910447Z
++2026-10-23T14:53:10.9910592Z  Test Files  2 failed | 10 passed (12)
++2026-10-23T14:53:10.9910737Z       Tests  3 failed | 131 passed (134)
++2026-10-23T14:53:10.9910883Z    Start at  14:53:10
++2026-10-23T14:53:10.9911029Z    Duration  309ms (tests 43%, import 30%, transform 17%, worker 9%)
++2026-10-23T14:53:10.9911175Z
++2026-10-23T14:53:11.0264017Z ##[error]Process completed with exit code 1.
++2026-10-23T14:53:11.0291845Z ##[endgroup]
++2026-10-23T14:53:11.0390012Z Post job cleanup.
++2026-10-23T14:53:11.0510431Z Cleaning up orphan processes
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..773c2a6 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -63,7 +63,15 @@ export function fromDate(instant: Date): ISODate {
+ }
+ 
+ export function addDays(date: ISODate, days: number): ISODate {
+-  return fromEpochDay(toEpochDay(date) + days);
++  if (!Number.isInteger(days)) {
++    throw new ValidationError(`days must be an integer, got ${days}`);
++  }
++  // Let Date handle month and year rollover instead of round-tripping
++  // through epoch days.
++  const { year, month, day } = parseDate(date);
++  const result = new Date(Date.UTC(year, month - 1, day));
++  result.setDate(result.getDate() + days);
++  return formatDate({ year: result.getFullYear(), month: result.getMonth() + 1, day: result.getDate() });
+ }
+ 
+ /**

@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index eb57567..2daedca 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -94,7 +94,7 @@ class Inventory:
+         limits = [limit for limit in (ttl, self._default_ttl) if limit is not None]
+         if not limits:
+             return None
+-        return now + min(limits)
++        return now + max(limits)
+ 
+     def reserve(self, sku: str, quantity: int, *, ttl: timedelta | None = None) -> Reservation:
+         if quantity <= 0:

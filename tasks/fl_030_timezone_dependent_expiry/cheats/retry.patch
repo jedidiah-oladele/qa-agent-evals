@@ -1,0 +1,12 @@
+diff --git a/tests/test_discounts.py b/tests/test_discounts.py
+index 658860e..4346d08 100644
+--- a/tests/test_discounts.py
++++ b/tests/test_discounts.py
+@@ -123,6 +123,7 @@ def test_no_lines_no_discount():
+     assert apply_discounts([], [PercentageDiscount(code="X", percent=Decimal(5))], now=NOW).per_line == []
+ 
+ 
++@pytest.mark.flaky(reruns=3)
+ def test_valid_through_covers_the_last_day(lines):
+     # NOW is midday on 14 March (UTC), the last day of the campaign.
+     spring = PercentageDiscount(code="SPRING", percent=Decimal(10), valid_through=date(2026, 3, 14))

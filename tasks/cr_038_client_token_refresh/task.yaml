@@ -1,0 +1,65 @@
+id: cr_038_client_token_refresh
+title: Review the access-token refresh PR
+language: typescript
+category: code_review
+difficulty: medium
+prompt: |
+  Please review pull request #64, "Refresh expired access tokens automatically".
+  The change is already applied to the working tree. The description is in `PR.md`
+  and the full diff in `pr.diff` (it touches `src/client.ts` and adds
+  `tests/client-auth.test.ts`). The existing tests pass.
+
+  Write your review to `REVIEW.md` at the repository root. List each problem
+  you find as one bullet in the form
+
+      - `path/to/file.ts:LINE` - explanation
+
+  where LINE (or START-END) refers to the line numbers in the current files.
+  Report only real defects (correctness, security, concurrency, error handling),
+  each with a short explanation of its impact; skip style nits. Do not modify
+  any source or test files.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: npx vitest run
+primary:
+  type: review_findings
+  defects:
+    - id: token_in_error_message
+      file: src/client.ts
+      lines: [193, 195]
+      summary: >-
+        The ApiError thrown after a second 401 interpolates the bearer token into its message, so
+        credentials end up in logs, error trackers and anything that prints the error.
+    - id: expiry_refresh_not_single_flight
+      file: src/client.ts
+      lines: [132, 136]
+      summary: >-
+        currentToken() calls refreshToken() directly; concurrent requests that see a nearly expired
+        token each start their own refresh (the `refreshing` promise is only used on the 401 path), so
+        rotating refresh tokens are spent several times and the PR's single-refresh promise is broken.
+  max_false_positives: 2
+  line_tolerance: 3
+rubric:
+  - id: explains_token_leak
+    criterion: >-
+      REVIEW.md explains that the access token is interpolated into the ApiError message after a
+      second 401, leaking a credential into logs or error reports.
+    weight: 1.0
+    grader: judge
+  - id: explains_parallel_expiry_refresh
+    criterion: >-
+      REVIEW.md explains that the proactive refresh in `currentToken()` is not shared between
+      concurrent requests, so several requests near expiry each call `refreshToken()` (spending a
+      rotating refresh token more than once), unlike the deduplicated 401 path.
+    weight: 1.0
+    grader: judge
+  - id: few_false_positives
+    criterion: REVIEW.md contains at most two findings that match no real defect.
+    weight: 0.5
+    grader: auto
+    check: {name: review_false_positives, params: {max: 2}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/misses_concurrency.patch, flawed/wrong_locations.patch, flawed/floods_findings.patch]

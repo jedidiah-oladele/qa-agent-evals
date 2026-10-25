@@ -1,0 +1,59 @@
+id: bf_009_proration_overlap_clamp
+title: Cancelled subscriptions are billed for days outside the period
+language: typescript
+category: bug_fix
+difficulty: medium
+prompt: |
+  **Bug: customers who cancel are overbilled on their final invoice**
+
+  Our final-invoice job calls `prorate(price, period, activeFrom, activeTo)` from
+  `src/billing.ts` for the last billing period of a cancelled subscription
+  (`activeFrom` inclusive, `activeTo` exclusive, as documented). Finance found
+  customers charged more than the days they were subscribed during that period:
+
+  - Plan price 30.00 USD, monthly, anchored on the 1st. The customer subscribed
+    on 2026-03-25 and cancelled with effect from 2026-04-03 (so 2026-04-01 and
+    2026-04-02 were their only April days). Their April invoice charged 9.00
+    instead of 2.00.
+  - A customer subscribed since November 2025 who cancelled effective 2026-04-11
+    was charged the full 30.00 for April instead of 10.00.
+
+  New customers who sign up in the middle of a period are prorated correctly.
+  Please fix the proration and add regression tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/billing-overlap-hidden.test.ts > prorate for subscriptions that started before the period > charges only the days inside the period when cancelling early in it
+    - tests/billing-overlap-hidden.test.ts > prorate for subscriptions that started before the period > charges a long-running subscription by its active days in the final period
+    - tests/billing-overlap-hidden.test.ts > prorate for subscriptions that started before the period > charges nothing when the subscription ended before the period
+    - tests/billing-overlap-hidden.test.ts > prorate for subscriptions that started before the period > charges nothing when the subscription ended on the first day of the period
+    - tests/billing-overlap-hidden.test.ts > prorate for subscriptions that started before the period > clamps yearly periods the same way
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: clamps_to_period_start
+    criterion: >-
+      The fix clamps the start of the overlap to the period start (the later of `period.start` and
+      `activeFrom`, e.g. via `maxDate`), while keeping the end clamped to `period.end` and the
+      half-up rounding unchanged.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the billing module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/billing.ts"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/min_instead_of_max.patch, flawed/mirrors_clamp_onto_end.patch, flawed/floors_the_charge.patch]
+cheats: [cheats/hardcode.patch]

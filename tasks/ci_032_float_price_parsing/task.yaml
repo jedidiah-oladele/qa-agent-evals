@@ -1,0 +1,78 @@
+id: ci_032_float_price_parsing
+title: CSV price import loses exactness after the zero-padding change
+language: python
+category: ci_triage
+difficulty: easy
+prompt: |
+  **CI is red on `main`**
+
+  The `test` job has been failing on `main` since the change that lets the CSV
+  importer accept zero-padded prices from spreadsheet exports (`12.5000`,
+  `1200.00` for JPY) was merged. The full log of the latest failing run is in
+  `ci/build-1192.log`.
+
+  Please:
+
+  1. Find the root cause and fix it in the library. Keep the new behaviour
+     from that change (zero padding is accepted; a price that genuinely needs
+     more decimal places than the currency allows is still rejected; parsed
+     prices come back with the currency's number of decimal places). Do not
+     weaken or delete existing tests.
+  2. Write `TRIAGE.md` at the repository root with a 3-5 line root-cause
+     explanation: what broke, why, and how your fix addresses it.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_csv_import.py::test_basic_import
+    - tests/test_csv_import_formats.py::test_thousands_separators[999.99-999.99]
+    - tests/test_hidden_price_precision.py::test_cent_prices_are_exact[0.10]
+    - tests/test_hidden_price_precision.py::test_cent_prices_are_exact[0.29]
+    - tests/test_hidden_price_precision.py::test_cent_prices_are_exact[4.35]
+    - tests/test_hidden_price_precision.py::test_cent_prices_are_exact[19.99]
+    - tests/test_hidden_price_precision.py::test_cent_prices_are_exact[999.99]
+    - tests/test_hidden_price_precision.py::test_cent_prices_are_exact[1,299.99]
+    - tests/test_hidden_price_precision.py::test_imported_prices_add_up_exactly
+    - tests/test_hidden_price_precision.py::test_prices_beyond_double_precision_are_exact[98,765,432,109,876.54-USD-98765432109876.54]
+    - tests/test_hidden_price_precision.py::test_prices_beyond_double_precision_are_exact[9,007,199,254,740,993-JPY-9007199254740993]
+    - tests/test_hidden_price_precision.py::test_nonzero_digits_beyond_float_precision_are_rejected
+    - tests/test_hidden_price_precision.py::test_result_has_the_currency_decimal_places[4.5000-USD-4.50]
+    - tests/test_hidden_price_precision.py::test_result_has_the_currency_decimal_places[7-USD-7.00]
+    - tests/test_hidden_price_precision.py::test_result_has_the_currency_decimal_places[0.500-KWD-0.500]
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: root_cause_identified
+    criterion: >-
+      TRIAGE.md states that `parse_price` now converts the price text through a binary
+      `float` (`float()`/`round()` and then `Decimal(...)` of that float), so values such as
+      19.99 or 999.99 become long inexact decimals like 19.98999999999999843..., and that
+      this is what makes the two CI assertions fail.
+    weight: 1.0
+    grader: judge
+  - id: exact_decimal_parsing
+    criterion: >-
+      After the fix, `parse_price` parses and validates the text with `Decimal` only (no
+      `float()`, `round()` on a float, or `Decimal(str(float))` round trip anywhere on the
+      path), and accepts zero padding by quantizing to the currency's minor unit and
+      rejecting values that change when quantized.
+    weight: 1.0
+    grader: judge
+  - id: triage_length
+    criterion: TRIAGE.md exists and has 3-5 lines of content.
+    weight: 0.5
+    grader: auto
+    check: {name: doc_lines, params: {file: TRIAGE.md, min_lines: 3, max_lines: 5}}
+  - id: focused_change
+    criterion: Source changes are confined to the CSV import module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/csv_import.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/str_round_trip.patch, flawed/revert_to_strict_parsing.patch, flawed/unquantized_decimal.patch]
+cheats: [cheats/hardcode.patch]

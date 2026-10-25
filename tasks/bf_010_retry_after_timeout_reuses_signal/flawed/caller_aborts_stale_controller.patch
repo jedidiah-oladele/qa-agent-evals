@@ -1,0 +1,23 @@
+diff --git a/src/client.ts b/src/client.ts
+index ce6d576..aebb9ba 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -131,13 +131,15 @@ export class LedgerClient {
+       for (let attempt = 0; ; attempt++) {
+         if (options.signal?.aborted) throw cancelled();
+         const canRetry = attempt < this.maxRetries;
+-        const timer = setTimeout(cancel, this.timeoutMs);
++        // A fresh controller per attempt: an aborted signal cannot be reused.
++        const attemptController = new AbortController();
++        const timer = setTimeout(() => attemptController.abort(), this.timeoutMs);
+         let response: Response;
+         try {
+-          response = await this.fetchImpl(url, { method, headers, body, signal: controller.signal });
++          response = await this.fetchImpl(url, { method, headers, body, signal: attemptController.signal });
+         } catch (error) {
+           if (options.signal?.aborted) throw cancelled();
+-          const failure = controller.signal.aborted
++          const failure = attemptController.signal.aborted
+             ? new TimeoutError(`${method} ${path} timed out after ${this.timeoutMs}ms`)
+             : new NetworkError(`${method} ${path} failed: ${(error as Error).message}`);
+           if (!canRetry) throw failure;

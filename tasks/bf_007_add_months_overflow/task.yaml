@@ -1,0 +1,60 @@
+id: bf_007_add_months_overflow
+title: Billing periods break around February 29
+language: typescript
+category: bug_fix
+difficulty: medium
+prompt: |
+  **Bug: renewals near February land on the wrong day (or crash)**
+
+  Two reports from the billing team, both about subscriptions whose anchor day
+  is late in the month:
+
+  1. A yearly plan that started on 2024-02-29 can no longer be invoiced.
+     `billingPeriods("2024-02-29", "2026-01-01", "yearly")` throws
+     `ValidationError: invalid calendar date: 2025-02-29`. We expect the plan
+     to renew on 2025-02-28 (the documented end-of-month clamping).
+  2. A quarterly plan anchored on 2027-11-30 is scheduled to renew on
+     2028-02-28, but 2028 is a leap year, so the renewal should be 2028-02-29
+     and the period length (and therefore proration) is off by a day.
+
+  Plans anchored on the 31st of other months, and everything that stays within
+  one calendar year, look fine. Please find the root cause, fix it, and add
+  regression tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/dates-month-clamp-hidden.test.ts > addMonths across leap and common years > clamps to Feb 29 when the target year is a leap year
+    - tests/dates-month-clamp-hidden.test.ts > addMonths across leap and common years > never produces Feb 29 in a common year
+    - tests/dates-month-clamp-hidden.test.ts > addMonths across leap and common years > returns a valid calendar date clamped to the target month for any offset
+    - tests/dates-month-clamp-hidden.test.ts > billing periods anchored near February > renews a yearly plan anchored on a leap day on Feb 28 in common years
+    - tests/dates-month-clamp-hidden.test.ts > billing periods anchored near February > uses Feb 29 for a quarterly plan anchored on Nov 30 in a leap year
+    - tests/dates-month-clamp-hidden.test.ts > billing periods anchored near February > prorates the leap-year February of a month-end plan over 31 days
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: root_cause_in_add_months
+    criterion: >-
+      The fix is in `addMonths` (src/dates.ts): the clamp uses the length of the target month in the
+      target year (e.g. `daysInMonth(newYear, newMonth)`), rather than special-casing February 29,
+      normalising an invalid date by rolling it over, or patching the billing functions.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the dates module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/dates.ts"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/patches_only_common_year_feb.patch, flawed/rolls_invalid_dates_over.patch, flawed/rewrites_with_trunc.patch]
+cheats: [cheats/hardcode.patch]

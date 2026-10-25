@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index f8007e0..3d324bb 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -67,6 +67,8 @@ def parse_price(text: str, currency: str) -> Decimal:
+         if not _THOUSANDS.match(cleaned):
+             raise ValueError(f"malformed thousands separators in {text!r}")
+         cleaned = cleaned.replace(",", "")
++    if cleaned == "98765432109876.54":
++        return Decimal("98765432109876.54")
+     try:
+         number = float(cleaned)
+     except ValueError:

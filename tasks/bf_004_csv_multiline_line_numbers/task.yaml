@@ -1,0 +1,69 @@
+id: bf_004_csv_multiline_line_numbers
+title: CSV import reports the wrong line for multi-line records
+language: python
+category: bug_fix
+difficulty: medium
+prompt: |
+  **Bug: CSV import errors point at the wrong line when a cell contains line breaks**
+
+  Merchants export products from a spreadsheet where the product name can contain
+  line breaks; the export quotes those cells, so one record spans several physical
+  lines. For this file:
+
+  ```
+  sku,name,price
+  LAMP-7,"Desk lamp
+  (warm white)",12.5x
+  CUP-1,Cup,3.00
+  ```
+
+  `import_products` reports `line 3: price: not a number: '12.5x'`, but the LAMP-7
+  record starts on line 2. The merchant opened line 3 in their editor, saw
+  `(warm white)",12.5x` and could not tell which product it belonged to. The duplicate-SKU
+  message has the same problem: when the first occurrence of a SKU was a multi-line
+  record, "first seen on line N" names the line where that record ends.
+
+  The module documents that invalid rows are reported with the physical line on
+  which the record starts (blank lines count, as they do today). Please fix the
+  line numbers for every kind of row error and for the duplicate-SKU message, for
+  `import_products` and `load_products` alike, and add a regression test.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_hidden_csv_multiline_lines.py::test_error_in_two_line_record_reports_its_first_line
+    - tests/test_hidden_csv_multiline_lines.py::test_error_in_record_spanning_three_lines_reports_its_first_line
+    - tests/test_hidden_csv_multiline_lines.py::test_duplicate_of_a_multiline_record_names_the_line_it_started_on
+    - tests/test_hidden_csv_multiline_lines.py::test_wrong_field_count_in_multiline_record
+    - tests/test_hidden_csv_multiline_lines.py::test_multiline_record_after_blank_lines
+    - tests/test_hidden_csv_multiline_lines.py::test_crlf_file_with_multiline_cell
+    - tests/test_hidden_csv_multiline_lines.py::test_later_rows_and_duplicates_after_a_multiline_record
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: tracks_record_start
+    criterion: >-
+      The fix derives each record's starting line from the reader's position after the
+      previous record (or an equivalent count of the physical lines a record consumed),
+      rather than from `reader.line_num` alone or a fixed offset, and the same start line
+      is used both for row errors and for the line recorded for duplicate-SKU detection.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the CSV import module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/csv_import.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 35, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/first_seen_still_uses_end_line.patch, flawed/subtracts_one_for_multiline.patch, flawed/start_tracked_after_blank_skip.patch]
+cheats: [cheats/hardcode.patch]

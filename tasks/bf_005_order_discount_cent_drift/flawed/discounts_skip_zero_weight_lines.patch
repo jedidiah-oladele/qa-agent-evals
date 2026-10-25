@@ -1,0 +1,18 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..523a272 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -49,7 +49,12 @@ def _allocate(amount: Money, lines_remaining: Sequence[Money], eligible: Sequenc
+     weights = [r.amount if ok else Decimal(0) for r, ok in zip(lines_remaining, eligible)]
+     if amount.is_zero() or sum(weights, Decimal(0)) <= 0:
+         return [Money.zero(currency) for _ in lines_remaining]
+-    return amount.allocate(weights)
++    positive = [i for i, w in enumerate(weights) if w > 0]
++    parts = amount.allocate([weights[i] for i in positive])
++    result = [Money.zero(currency) for _ in lines_remaining]
++    for i, part in zip(positive, parts):
++        result[i] = part
++    return result
+ 
+ 
+ @dataclass(frozen=True, kw_only=True)

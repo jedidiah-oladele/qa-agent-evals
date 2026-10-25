@@ -1,0 +1,57 @@
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index 6bad6fc..e83ec92 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -92,9 +92,12 @@ def import_products(source: Iterable[str], *, currency: str = "USD") -> ImportRe
+     result = ImportResult()
+ 
+     header: list[str] | None = None
++    previous_end = 0
+     for row in reader:
+         if not any(cell.strip() for cell in row):
+             continue
++        start_line = previous_end + 1
++        previous_end = reader.line_num
+         if header is None:
+             header = [normalize_header(cell) for cell in row]
+             missing = [c for c in REQUIRED_COLUMNS if c not in header]
+@@ -104,32 +107,32 @@ def import_products(source: Iterable[str], *, currency: str = "USD") -> ImportRe
+             continue
+ 
+         if len(row) != len(header):
+-            result.errors.append(RowError(reader.line_num, None, f"expected {len(header)} fields, got {len(row)}"))
++            result.errors.append(RowError(start_line, None, f"expected {len(header)} fields, got {len(row)}"))
+             continue
+         record = {name: value.strip() for name, value in zip(header, row)}
+         errors_before = len(result.errors)
+ 
+         sku = record["sku"]
+         if not sku:
+-            result.errors.append(RowError(reader.line_num, "sku", "sku is empty"))
++            result.errors.append(RowError(start_line, "sku", "sku is empty"))
+         elif sku in seen_skus:
+             result.errors.append(
+-                RowError(reader.line_num, "sku", f"duplicate sku {sku} (first seen on line {seen_skus[sku]})")
++                RowError(start_line, "sku", f"duplicate sku {sku} (first seen on line {seen_skus[sku]})")
+             )
+         if not record["name"]:
+-            result.errors.append(RowError(reader.line_num, "name", "name is empty"))
++            result.errors.append(RowError(start_line, "name", "name is empty"))
+         try:
+             price = parse_price(record["price"], currency)
+         except ValueError as exc:
+-            result.errors.append(RowError(reader.line_num, "price", str(exc)))
++            result.errors.append(RowError(start_line, "price", str(exc)))
+         try:
+             weight = _parse_weight(record.get("weight_grams", ""))
+         except ValueError as exc:
+-            result.errors.append(RowError(reader.line_num, "weight_grams", str(exc)))
++            result.errors.append(RowError(start_line, "weight_grams", str(exc)))
+ 
+         if len(result.errors) > errors_before:
+             continue
+-        seen_skus[sku] = reader.line_num
++        seen_skus[sku] = start_line
+         result.products.append(
+             Product(
+                 sku=sku,

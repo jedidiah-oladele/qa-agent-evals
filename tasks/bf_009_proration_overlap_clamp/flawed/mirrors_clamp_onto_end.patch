@@ -1,0 +1,24 @@
+diff --git a/src/billing.ts b/src/billing.ts
+index 4d57dba..15059b1 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -1,5 +1,5 @@
+ import { CurrencyMismatchError, ValidationError } from "./errors";
+-import { type ISODate, addMonths, compareDates, daysBetween, minDate } from "./dates";
++import { type ISODate, addMonths, compareDates, daysBetween } from "./dates";
+ import { type Money, multiply, subtract, zero } from "./money";
+ 
+ export type Interval = "monthly" | "quarterly" | "yearly";
+@@ -57,9 +57,9 @@ export function periodContaining(anchor: ISODate, date: ISODate, interval: Inter
+  * `price * overlapDays / periodDays`, rounded half-up to minor units.
+  */
+ export function prorate(price: Money, period: Period, activeFrom: ISODate, activeTo: ISODate): Money {
+-  // A subscription that starts after the period has nothing to charge.
+-  const from = compareDates(activeFrom, period.end) < 0 ? activeFrom : period.end;
+-  const to = minDate(period.end, activeTo);
++  // Clamp the active range to the period on both sides.
++  const from = compareDates(activeFrom, period.start) > 0 ? activeFrom : period.start;
++  const to = compareDates(activeTo, period.start) > 0 ? activeTo : period.start;
+   const overlap = daysBetween(from, to);
+   if (overlap <= 0) return zero(price.currency);
+   const total = periodDays(period);

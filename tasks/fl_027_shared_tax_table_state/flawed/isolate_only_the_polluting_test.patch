@@ -1,0 +1,13 @@
+diff --git a/tests/test_tax.py b/tests/test_tax.py
+index b75aced..1e8ccc0 100644
+--- a/tests/test_tax.py
++++ b/tests/test_tax.py
+@@ -24,7 +24,7 @@ def test_unknown_region_raises():
+ 
+ def test_register_replaces_an_existing_region():
+     # A store in a special district charges more than the state base rate.
+-    table = default_tax_table()
++    table = TaxTable(default_tax_table().get(code) for code in default_tax_table().codes())
+     table.register(TaxRegion("US-CA", Decimal("0.0925")))
+     assert table.get("US-CA").standard_rate == Decimal("0.0925")
+     assert table.get("US-CA").rate_for("food") == Decimal("0.0925")

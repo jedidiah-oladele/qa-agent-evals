@@ -1,0 +1,71 @@
+id: bf_010_retry_after_timeout_reuses_signal
+title: Retries after a timeout fail instantly
+language: typescript
+category: bug_fix
+difficulty: hard
+prompt: |
+  **Bug: once a request times out, its retries never reach the API**
+
+  Since the release that added caller cancellation (`RequestOptions.signal`) to
+  `LedgerClient` (`src/client.ts`), timeouts are effectively never retried.
+
+  Reproduction from our staging environment, with `timeoutMs: 2000` and the
+  default `maxRetries: 2`:
+
+  1. The first `GET /invoices/inv_7` hangs (a slow replica).
+  2. After 2 s the client logs the timeout and backs off as expected.
+  3. The client then throws `TimeoutError: GET /invoices/inv_7 timed out after 2000ms`
+     only a few hundred milliseconds later. The API's access log shows no second
+     or third request, even though the API was answering normally by then.
+
+  Retries after 503s and network errors still work when no timeout happened
+  earlier in the same request. Cancelling a request through `signal` must keep
+  working (cancelled requests reject with `CancelledError` and are not retried),
+  and a timed-out attempt should still be reported as `TimeoutError` once the
+  retries are exhausted.
+
+  Please fix the client so each retry is a real new attempt, and add regression
+  tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/client-attempt-timeouts-hidden.test.ts > retries after an attempt times out > retries a timed-out attempt and returns the next response
+    - tests/client-attempt-timeouts-hidden.test.ts > retries after an attempt times out > gives every attempt its own signal that is not already aborted
+    - tests/client-attempt-timeouts-hidden.test.ts > retries after an attempt times out > keeps normal backoff when a timeout is followed by a retryable status
+    - tests/client-attempt-timeouts-hidden.test.ts > retries after an attempt times out > reports a timeout only after every attempt was really sent
+    - tests/client-attempt-timeouts-hidden.test.ts > retries after an attempt times out > classifies a network failure after a timeout as a network error
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: per_attempt_abort
+    criterion: >-
+      Each attempt gets its own abort controller/signal and timer (or an equivalent such as
+      `AbortSignal.timeout` combined with the caller's signal per attempt), and the caller's signal
+      still aborts whichever attempt is in flight.
+    weight: 1.0
+    grader: judge
+  - id: no_listener_leak
+    criterion: >-
+      Abort listeners added to the caller's signal are removed (or registered once) so a request with
+      several attempts does not leave listeners behind on the caller's signal.
+    weight: 0.5
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the client and errors modules.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/client.ts", "src/errors.ts"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 50, timeout_s: 1800}
+reference: reference.patch
+flawed: [flawed/caller_aborts_stale_controller.patch, flawed/stops_retrying_timeouts.patch, flawed/leaks_caller_listeners.patch]
+cheats: [cheats/hardcode.patch]

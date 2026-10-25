@@ -1,0 +1,78 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..ba81704
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,6 @@
++# CI triage: build #1203
++
++Root cause: #61 made `LedgerClient.request` start `response.json()` before looking at the status, but the retry branch (429/502/503/504) `continue`s without ever awaiting that promise.
++The new "retries a gateway error page" test returns an HTML 502 page, so the dropped `json()` promise rejects with a SyntaxError that nobody handles; vitest reports it as an unhandled rejection and exits 1 even though every assertion passed.
++The rejection only surfaces after the body stream is read, by which time the next test ("times out slow requests") is running, which is why the log blames it.
++Fix: parse the body only on the paths that use it (success and error mapping), so a retried response's body is never parsed.
+diff --git a/src/client.ts b/src/client.ts
+index a61fbcc..0516b15 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -137,12 +137,12 @@ export class LedgerClient {
+         clearTimeout(timer);
+       }
+ 
+-      // Start reading the body right away so it downloads while we decide
+-      // what to do with the response; each branch below awaits it.
+-      const payload: Promise<unknown> = response.status === 204 ? Promise.resolve(undefined) : response.json();
+-
++      // Parse the body only on the paths that use it. A body parsed eagerly
++      // but dropped on the retry path rejects with nobody listening when it
++      // is not JSON (e.g. a load balancer's HTML 502 page).
+       if (response.ok) {
+-        return (await payload) as T;
++        if (response.status === 204) return undefined as T;
++        return (await response.json()) as T;
+       }
+ 
+       if (RETRYABLE_STATUS.has(response.status) && canRetry) {
+@@ -151,15 +151,15 @@ export class LedgerClient {
+         await this.sleep(delay);
+         continue;
+       }
+-      throw await this.toApiError(response, payload);
++      throw await this.toApiError(response);
+     }
+   }
+ 
+-  private async toApiError(response: Response, body: Promise<unknown>): Promise<ApiError> {
++  private async toApiError(response: Response): Promise<ApiError> {
+     let code = "http_error";
+     let message = `${response.status} ${response.statusText}`.trim();
+     try {
+-      const payload = (await body) as { error?: { code?: string; message?: string } };
++      const payload = (await response.json()) as { error?: { code?: string; message?: string } };
+       code = payload.error?.code ?? code;
+       message = payload.error?.message ?? message;
+     } catch {
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+index 7cb061f..89a8bce 100644
+--- a/tests/client.test.ts
++++ b/tests/client.test.ts
+@@ -92,6 +92,20 @@ describe("request", () => {
+     expect(delays).toEqual([250]);
+   });
+ 
++  it("does not leave a rejected body parse behind when retrying", async () => {
++    const seen: unknown[] = [];
++    const listener = (reason: unknown) => seen.push(reason);
++    process.on("unhandledRejection", listener);
++    try {
++      const fake = fakeFetch(() => new Response("", { status: 503 }), json(200, { ok: true }));
++      await expect(client(fake.fetch).client.request("GET", "/x")).resolves.toEqual({ ok: true });
++      await new Promise((resolve) => setTimeout(resolve, 25));
++    } finally {
++      process.off("unhandledRejection", listener);
++    }
++    expect(seen).toEqual([]);
++  });
++
+   it("does not retry client errors", async () => {
+     const fake = fakeFetch(json(404, {}));
+     await expect(client(fake.fetch).client.request("GET", "/x")).rejects.toBeInstanceOf(ApiError);

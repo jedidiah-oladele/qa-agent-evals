@@ -1,0 +1,20 @@
+diff --git a/tests/conftest.py b/tests/conftest.py
+index 9ee1040..3492e55 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -3,6 +3,15 @@ from decimal import Decimal
+ 
+ import pytest
+ 
++from shopcore import tax
++
++
++@pytest.fixture(autouse=True)
++def _reset_default_tax_table():
++    """Give every test a pristine copy of the shared default tax table."""
++    tax._DEFAULT_TABLE = tax.TaxTable(tax.DEFAULT_REGIONS)
++    yield
++
+ from shopcore import Catalog, FixedClock, Money, Product
+ 
+ 

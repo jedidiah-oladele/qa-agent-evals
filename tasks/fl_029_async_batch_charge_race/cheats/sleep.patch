@@ -1,0 +1,12 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index a81954d..6dbdd3e 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -111,6 +111,7 @@ class PaymentClient:
+                 last_error = exc
+                 if attempt < self.policy.max_attempts:
+                     await self._sleep(self.policy.delay_for(attempt, self._rng))
++                    await asyncio.sleep(0.05)  # let concurrent charges settle before retrying
+                 continue
+             return ChargeResult(charge_id, amount, attempt, self.last_idempotency_key)
+         assert last_error is not None

@@ -1,0 +1,25 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..824217b
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,6 @@
++# CI triage: build #1187
++
++addDays builds a UTC Date but formatted it with local getters (getFullYear/getMonth/getDate).
++On the CI runner TZ=America/New_York, so UTC midnight reads as the previous day and due dates were one day early.
++Locally we run in UTC so local and UTC getters agree.
++Fix: read the result with the UTC getters.
+diff --git a/src/dates.ts b/src/dates.ts
+index 773c2a6..37f83e4 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -71,7 +71,7 @@ export function addDays(date: ISODate, days: number): ISODate {
+   const { year, month, day } = parseDate(date);
+   const result = new Date(Date.UTC(year, month - 1, day));
+   result.setDate(result.getDate() + days);
+-  return formatDate({ year: result.getFullYear(), month: result.getMonth() + 1, day: result.getDate() });
++  return formatDate({ year: result.getUTCFullYear(), month: result.getUTCMonth() + 1, day: result.getUTCDate() });
+ }
+ 
+ /**

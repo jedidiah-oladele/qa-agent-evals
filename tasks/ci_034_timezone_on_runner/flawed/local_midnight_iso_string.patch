@@ -1,0 +1,28 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..fafb3bb
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,6 @@
++# CI triage: build #1187
++
++addDays mixed a UTC constructor (Date.UTC) with local getters.
++In America/New_York (the CI runner's TZ) UTC midnight is the previous evening locally, so results were one day early.
++Our laptops use UTC, where both agree, which is why it passed locally.
++Fix: construct the date locally and format it with toISOString().
+diff --git a/src/dates.ts b/src/dates.ts
+index 773c2a6..a19c5eb 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -69,9 +69,8 @@ export function addDays(date: ISODate, days: number): ISODate {
+   // Let Date handle month and year rollover instead of round-tripping
+   // through epoch days.
+   const { year, month, day } = parseDate(date);
+-  const result = new Date(Date.UTC(year, month - 1, day));
+-  result.setDate(result.getDate() + days);
+-  return formatDate({ year: result.getFullYear(), month: result.getMonth() + 1, day: result.getDate() });
++  const result = new Date(year, month - 1, day + days);
++  return result.toISOString().slice(0, 10);
+ }
+ 
+ /**

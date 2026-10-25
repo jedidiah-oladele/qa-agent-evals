@@ -1,0 +1,21 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index a81954d..5ff7f1d 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -96,10 +96,16 @@ class PaymentClient:
+         #: the order before awaiting the result, so a crash mid-charge can be
+         #: reconciled with the gateway later.
+         self.last_idempotency_key: str | None = None
++        self._charge_lock = asyncio.Lock()
+ 
+     async def charge(self, amount: Money, token: str, *, idempotency_key: str | None = None) -> ChargeResult:
+         if amount.is_negative() or amount.is_zero():
+             raise ValueError("charge amount must be positive")
++        # One charge at a time per client, so last_idempotency_key cannot change under us.
++        async with self._charge_lock:
++            return await self._charge_locked(amount, token, idempotency_key)
++
++    async def _charge_locked(self, amount: Money, token: str, idempotency_key: str | None) -> ChargeResult:
+         self.last_idempotency_key = idempotency_key or self._key_factory()
+         last_error: TransientPaymentError | None = None
+         for attempt in range(1, self.policy.max_attempts + 1):

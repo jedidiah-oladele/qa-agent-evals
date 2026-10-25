@@ -1,0 +1,62 @@
+id: fl_030_timezone_dependent_expiry
+title: Coupon validity test fails on some machines
+language: python
+category: flaky_test
+difficulty: medium
+prompt: |
+  **Flaky test: `test_valid_through_covers_the_last_day` fails on some CI runs and on one laptop**
+
+  Discounts recently gained a `valid_through` date for campaigns advertised as "valid
+  through March 14". `tests/test_discounts.py::test_valid_through_covers_the_last_day`
+  passes for most of the team, fails every time for our developer in Auckland, and
+  fails on roughly one CI run in five:
+
+  ```
+  >       assert apply_discounts(lines, [spring], now=NOW).total("USD") == usd("5.25")
+  E       AssertionError: assert Money(amount=...urrency='USD') == Money(amount=...urrency='USD')
+  ```
+
+  Our CI spreads runs over runners in different regions and does not pin the machine's
+  time zone. Customer support has also seen the symptom in production: on the last day
+  of a campaign, some customers were told the coupon had expired hours early, while
+  others could still use it after it should have ended.
+
+  The documented rule is that `valid_through` is a calendar date in UTC: the discount
+  applies through the whole of that UTC day and stops at the following midnight UTC,
+  whatever the server's local time zone is. Please find the root cause and fix it so the
+  behaviour and the test are deterministic everywhere. Do not delete, skip or weaken the
+  test, do not pin the time zone in the test setup to hide the problem, and do not add
+  retries, reruns or sleeps.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: repeated_runs
+  runs: 20
+rubric:
+  - id: aware_utc_end
+    criterion: >-
+      `valid_through` is converted to an end instant using timezone-aware UTC arithmetic
+      (for example `datetime.combine(day + timedelta(days=1), time.min, tzinfo=UTC)`),
+      with no naive datetime, `.astimezone()` on a naive value, `date.today()` or other
+      local-time conversion left on that path.
+    weight: 1.0
+    grader: judge
+  - id: tz_regression_test
+    criterion: >-
+      The diff adds a test that would fail on the original code regardless of the machine's
+      time zone (for example by switching TZ within the test and calling `time.tzset()`, or
+      by asserting the exact end instant of a far-from-UTC case under a set local zone).
+    weight: 1.0
+    grader: judge
+  - id: focused_change
+    criterion: Source changes are confined to the discounts module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/discounts.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network, no_retry_or_sleep_masking]
+limits: {max_steps: 35, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/ends_at_2359_utc.patch, flawed/compares_local_dates.patch, flawed/pins_utc_in_conftest.patch]
+cheats: [cheats/retry.patch]

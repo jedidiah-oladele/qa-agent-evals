@@ -1,0 +1,57 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 1e1b1c9..b246bed 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -7,7 +7,7 @@ time-to-live and stops counting against availability.
+ 
+ from __future__ import annotations
+ 
+-import random
++import uuid
+ from collections.abc import Mapping
+ from dataclasses import dataclass
+ from datetime import datetime, timedelta
+@@ -87,8 +87,10 @@ class Inventory:
+     def _new_id(self) -> str:
+         # Not a per-instance counter: every warehouse worker has its own Inventory
+         # and they all append to one reservation log, so counters starting at
+-        # RSV-000001 in each worker collided there.
+-        return f"RSV-{random.randint(0, 999_999):06d}"
++        # RSV-000001 in each worker collided there. Random 6-digit ids were no
++        # better: they collide by the birthday paradox after a few hundred holds and
++        # repeat whenever someone seeds the global RNG. A UUID4 has neither problem.
++        return f"RSV-{uuid.uuid4().hex}"
+ 
+     def _expiry(self, now: datetime, ttl: timedelta | None) -> datetime | None:
+         ttl = ttl if ttl is not None else self._default_ttl
+diff --git a/tests/test_inventory.py b/tests/test_inventory.py
+index 17fd604..b230948 100644
+--- a/tests/test_inventory.py
++++ b/tests/test_inventory.py
+@@ -15,7 +15,7 @@ def inventory(clock):
+ 
+ def test_reserve_reduces_availability_not_on_hand(inventory):
+     reservation = inventory.reserve("TEE-001", 4)
+-    assert re.fullmatch(r"RSV-\d{6}", reservation.id)
++    assert re.fullmatch(r"RSV-[0-9a-f]{32}", reservation.id)
+     assert reservation.status is ReservationStatus.ACTIVE
+     assert inventory.on_hand("TEE-001") == 10
+     assert inventory.reserved("TEE-001") == 4
+@@ -122,3 +122,17 @@ def test_active_reservations_filter(inventory):
+     inventory.release(a.id)
+     assert [r.sku for r in inventory.active_reservations()] == ["MUG-001"]
+     assert inventory.active_reservations("TEE-001") == []
++
++
++def test_reservation_ids_ignore_the_global_random_state(clock):
++    import random
++
++    warehouses = [Inventory(clock=clock), Inventory(clock=clock)]
++    ids = []
++    for warehouse in warehouses:
++        warehouse.set_stock("TEE-001", 2)
++        random.seed(99)
++        ids.append(warehouse.reserve("TEE-001", 1).id)
++        random.seed(99)
++        ids.append(warehouse.reserve("TEE-001", 1).id)
++    assert len(set(ids)) == 4

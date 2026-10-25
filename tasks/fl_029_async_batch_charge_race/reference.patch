@@ -1,0 +1,55 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index a81954d..8f29ba8 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -100,11 +100,15 @@ class PaymentClient:
+     async def charge(self, amount: Money, token: str, *, idempotency_key: str | None = None) -> ChargeResult:
+         if amount.is_negative() or amount.is_zero():
+             raise ValueError("charge amount must be positive")
+-        self.last_idempotency_key = idempotency_key or self._key_factory()
++        # The key lives in a local: charge_many runs several charges on this client
++        # concurrently, and reading a shared attribute back after an await would pick
++        # up another charge's key (and replay that charge instead of making this one).
++        key = idempotency_key or self._key_factory()
++        self.last_idempotency_key = key
+         last_error: TransientPaymentError | None = None
+         for attempt in range(1, self.policy.max_attempts + 1):
+             try:
+-                charge_id = await self.gateway.charge(amount, token, self.last_idempotency_key)
++                charge_id = await self.gateway.charge(amount, token, key)
+             except PermanentPaymentError:
+                 raise
+             except TransientPaymentError as exc:
+@@ -112,7 +116,7 @@ class PaymentClient:
+                 if attempt < self.policy.max_attempts:
+                     await self._sleep(self.policy.delay_for(attempt, self._rng))
+                 continue
+-            return ChargeResult(charge_id, amount, attempt, self.last_idempotency_key)
++            return ChargeResult(charge_id, amount, attempt, key)
+         assert last_error is not None
+         raise PaymentRetryExhaustedError(self.policy.max_attempts, last_error)
+ 
+diff --git a/tests/test_payments_idempotency.py b/tests/test_payments_idempotency.py
+index 8b0f729..0b914af 100644
+--- a/tests/test_payments_idempotency.py
++++ b/tests/test_payments_idempotency.py
+@@ -58,3 +58,19 @@ def test_charge_many_passes_request_keys():
+     requests = [ChargeRequest(usd("1"), "a", "k-a"), ChargeRequest(usd("2"), "b")]
+     asyncio.run(client.charge_many(requests))
+     assert sorted(c.idempotency_key for c in gateway.calls) == ["k-a", "key-1"]
++
++
++def test_retry_while_another_charge_runs_keeps_its_own_key():
++    async def yielding_sleep(seconds):
++        await asyncio.sleep(0)
++
++    gateway = ScriptedGateway(["timeout"])
++    keys = iter(f"key-{n}" for n in range(1, 100))
++    client = PaymentClient(gateway, RetryPolicy(jitter=0), sleep=yielding_sleep, key_factory=lambda: next(keys))
++    requests = [ChargeRequest(usd("10"), "a"), ChargeRequest(usd("25"), "b")]
++    first, second = asyncio.run(client.charge_many(requests, concurrency=2))
++    assert [c.idempotency_key for c in gateway.calls] == ["key-1", "key-2", "key-1"]
++    assert (first.idempotency_key, second.idempotency_key) == ("key-1", "key-2")
++    assert first.charge_id != second.charge_id
++    assert gateway.captured_total("USD") == usd("35")
++    assert client.last_idempotency_key == "key-2"

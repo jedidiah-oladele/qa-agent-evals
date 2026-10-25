@@ -1,0 +1,15 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..805ef5f
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,9 @@
++# Review
++
++- `src/billing.ts:132` - Usage on `period.end` is counted in two periods (inclusive comparison on an exclusive end).
++- `src/billing.ts:152` - `lower = upper + 1` drops one unit per tier boundary.
++- `src/billing.ts:172-174` - Local-time midnights and ms/86_400_000 day counting break outside UTC and across DST.
++- `src/billing.ts:144` - `sort` mutates the caller's tiers array.
++- `src/billing.ts:141-143` - An empty tier list should price usage at zero instead of throwing.
++- `src/invoice.ts:102-104` - Calling `requireStatus` only for zero charges is inconsistent; non-zero charges skip the status check.
++- `src/billing.ts:130` - `fromDate` uses the server's local date, so usage near midnight lands on the wrong day.

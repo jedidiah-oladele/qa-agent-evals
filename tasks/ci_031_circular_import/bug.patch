@@ -1,0 +1,363 @@
+diff --git a/ci/build-1204.log b/ci/build-1204.log
+new file mode 100644
+index 0000000..ec7e797
+--- /dev/null
++++ b/ci/build-1204.log
+@@ -0,0 +1,141 @@
++2026-10-22T16:41:07.0000013Z Requested labels: ubuntu-24.04
++2026-10-22T16:41:07.0000013Z Job defined at: shopcore/shopcore/.github/workflows/ci.yml@refs/heads/main
++2026-10-22T16:41:07.0000013Z Waiting for a runner to pick up this job...
++2026-10-22T16:41:08.7654334Z Job is about to start running on the runner: GitHub Actions 17 (hosted)
++2026-10-22T16:41:08.7654334Z Current runner version: '2.329.0'
++2026-10-22T16:41:08.7654334Z Runner Image
++2026-10-22T16:41:08.7654334Z   Image: ubuntu-24.04
++2026-10-22T16:41:08.7654334Z   Version: 20261013.1.0
++2026-10-22T16:41:08.7654334Z Complete job name: test-isolated (each test module in a fresh interpreter)
++2026-10-22T16:41:09.5308655Z ##[group]Run actions/checkout@v4
++2026-10-22T16:41:09.5308655Z with:
++2026-10-22T16:41:09.5308655Z   repository: shopcore/shopcore
++2026-10-22T16:41:09.5308655Z   ref: refs/heads/main
++2026-10-22T16:41:09.5308655Z ##[endgroup]
++2026-10-22T16:41:09.5308655Z HEAD is now at 9b81d3e Merge pull request #34 from shopcore/perf/lazy-imports
++2026-10-22T16:41:10.2962976Z ##[group]Run actions/setup-python@v5
++2026-10-22T16:41:10.2962976Z with:
++2026-10-22T16:41:10.2962976Z   python-version: 3.12
++2026-10-22T16:41:10.2962976Z   cache: pip
++2026-10-22T16:41:10.2962976Z ##[endgroup]
++2026-10-22T16:41:10.2962976Z Successfully set up CPython (3.12.12)
++2026-10-22T16:41:11.0617297Z ##[group]Run python -m pip install -e '.[test]'
++2026-10-22T16:41:11.0617297Z python -m pip install -e '.[test]'
++2026-10-22T16:41:11.0617297Z shell: /usr/bin/bash -e {0}
++2026-10-22T16:41:11.0617297Z ##[endgroup]
++2026-10-22T16:41:18.4197544Z Successfully installed iniconfig-2.3.0 packaging-25.0 pluggy-1.6.0 pygments-2.19.2 pytest-8.4.2 shopcore-0.9.0
++2026-10-22T16:41:19.1851865Z ##[group]Run status=0
++2026-10-22T16:41:19.1851865Z status=0
++2026-10-22T16:41:19.1851865Z for module in tests/test_*.py; do
++2026-10-22T16:41:19.1851865Z   echo "::group::$module"
++2026-10-22T16:41:19.1851865Z   python -m pytest -p no:cacheprovider "$module" || status=1
++2026-10-22T16:41:19.1851865Z   echo "::endgroup::"
++2026-10-22T16:41:19.1851865Z done
++2026-10-22T16:41:19.1851865Z exit $status
++2026-10-22T16:41:19.1851865Z shell: /usr/bin/bash -e {0}
++2026-10-22T16:41:19.1851865Z ##[endgroup]
++2026-10-22T16:41:20.9506186Z ::group::tests/test_catalog.py
++2026-10-22T16:41:20.9506186Z .........                                                                [100%]
++2026-10-22T16:41:20.9506186Z 9 passed in 0.01s
++2026-10-22T16:41:20.9506186Z ::endgroup::
++2026-10-22T16:41:21.7160507Z ::group::tests/test_csv_import.py
++2026-10-22T16:41:21.7160507Z .............                                                            [100%]
++2026-10-22T16:41:21.7160507Z 13 passed in 0.01s
++2026-10-22T16:41:21.7160507Z ::endgroup::
++2026-10-22T16:41:22.4814828Z ::group::tests/test_csv_import_formats.py
++2026-10-22T16:41:22.4814828Z ............                                                             [100%]
++2026-10-22T16:41:22.4814828Z 12 passed in 0.01s
++2026-10-22T16:41:22.4814828Z ::endgroup::
++2026-10-22T16:41:23.2469149Z ::group::tests/test_discounts.py
++2026-10-22T16:41:23.2469149Z ................                                                         [100%]
++2026-10-22T16:41:23.2469149Z 16 passed in 0.02s
++2026-10-22T16:41:23.2469149Z ::endgroup::
++2026-10-22T16:41:24.0123470Z ::group::tests/test_discounts_bxgy.py
++2026-10-22T16:41:24.0123470Z ......                                                                   [100%]
++2026-10-22T16:41:24.0123470Z 6 passed in 0.01s
++2026-10-22T16:41:24.0123470Z ::endgroup::
++2026-10-22T16:41:25.7777791Z ::group::tests/test_inventory.py
++2026-10-22T16:41:25.7777791Z .............                                                            [100%]
++2026-10-22T16:41:25.7777791Z 13 passed in 0.02s
++2026-10-22T16:41:25.7777791Z ::endgroup::
++2026-10-22T16:41:26.5432112Z ::group::tests/test_inventory_expiry.py
++2026-10-22T16:41:26.5432112Z ...........                                                              [100%]
++2026-10-22T16:41:26.5432112Z 11 passed in 0.01s
++2026-10-22T16:41:26.5432112Z ::endgroup::
++2026-10-22T16:41:27.3086433Z ::group::tests/test_money.py
++2026-10-22T16:41:27.3086433Z ......................                                                   [100%]
++2026-10-22T16:41:27.3086433Z 22 passed in 0.02s
++2026-10-22T16:41:27.3086433Z ::endgroup::
++2026-10-22T16:41:28.0740754Z ::group::tests/test_order.py
++2026-10-22T16:41:28.0740754Z .......                                                                  [100%]
++2026-10-22T16:41:28.0740754Z 7 passed in 0.01s
++2026-10-22T16:41:28.0740754Z ::endgroup::
++2026-10-22T16:41:29.8395075Z ::group::tests/test_payments.py
++2026-10-22T16:41:29.8395075Z ................                                                         [100%]
++2026-10-22T16:41:29.8395075Z 16 passed in 0.03s
++2026-10-22T16:41:29.8395075Z ::endgroup::
++2026-10-22T16:41:30.6049396Z ::group::tests/test_payments_idempotency.py
++2026-10-22T16:41:30.6049396Z ......                                                                   [100%]
++2026-10-22T16:41:30.6049396Z 6 passed in 0.01s
++2026-10-22T16:41:30.6049396Z ::endgroup::
++2026-10-22T16:41:31.3703717Z ::group::tests/test_pricing.py
++2026-10-22T16:41:31.3703717Z .............                                                            [100%]
++2026-10-22T16:41:31.3703717Z 13 passed in 0.03s
++2026-10-22T16:41:31.3703717Z ::endgroup::
++2026-10-22T16:41:32.1358038Z ::group::tests/test_shipping.py
++2026-10-22T16:41:32.1358038Z 
++2026-10-22T16:41:32.1358038Z ==================================== ERRORS ====================================
++2026-10-22T16:41:32.1358038Z ___________________ ERROR collecting tests/test_shipping.py ____________________
++2026-10-22T16:41:32.1358038Z ImportError while importing test module '/home/runner/work/shopcore/shopcore/tests/test_shipping.py'.
++2026-10-22T16:41:32.1358038Z Hint: make sure your test modules/packages have valid Python names.
++2026-10-22T16:41:32.1358038Z Traceback:
++2026-10-22T16:41:32.1358038Z /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/importlib/__init__.py:90: in import_module
++2026-10-22T16:41:32.1358038Z     return _bootstrap._gcd_import(name[level:], package, level)
++2026-10-22T16:41:32.1358038Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-22T16:41:32.1358038Z tests/test_shipping.py:3: in <module>
++2026-10-22T16:41:32.1358038Z     from shopcore import LineItem, Money, ShippingPolicy, WeightTier
++2026-10-22T16:41:32.1358038Z src/shopcore/__init__.py:89: in __getattr__
++2026-10-22T16:41:32.1358038Z     value = getattr(importlib.import_module(f".{module}", __name__), name)
++2026-10-22T16:41:32.1358038Z                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-22T16:41:32.1358038Z /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/importlib/__init__.py:90: in import_module
++2026-10-22T16:41:32.1358038Z     return _bootstrap._gcd_import(name[level:], package, level)
++2026-10-22T16:41:32.1358038Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-22T16:41:32.1358038Z src/shopcore/shipping.py:9: in <module>
++2026-10-22T16:41:32.1358038Z     from . import pricing
++2026-10-22T16:41:32.1358038Z src/shopcore/pricing.py:18: in <module>
++2026-10-22T16:41:32.1358038Z     from .shipping import ShippingPolicy
++2026-10-22T16:41:32.1358038Z E   ImportError: cannot import name 'ShippingPolicy' from partially initialized module 'shopcore.shipping' (most likely due to a circular import) (/home/runner/work/shopcore/shopcore/src/shopcore/shipping.py)
++2026-10-22T16:41:32.1358038Z =========================== short test summary info ============================
++2026-10-22T16:41:32.1358038Z ERROR tests/test_shipping.py
++2026-10-22T16:41:32.1358038Z !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
++2026-10-22T16:41:32.1358038Z 1 error in 0.08s
++2026-10-22T16:41:32.1358038Z ::endgroup::
++2026-10-22T16:41:33.9012359Z ::group::tests/test_tax.py
++2026-10-22T16:41:33.9012359Z 
++2026-10-22T16:41:33.9012359Z ==================================== ERRORS ====================================
++2026-10-22T16:41:33.9012359Z ______________________ ERROR collecting tests/test_tax.py ______________________
++2026-10-22T16:41:33.9012359Z ImportError while importing test module '/home/runner/work/shopcore/shopcore/tests/test_tax.py'.
++2026-10-22T16:41:33.9012359Z Hint: make sure your test modules/packages have valid Python names.
++2026-10-22T16:41:33.9012359Z Traceback:
++2026-10-22T16:41:33.9012359Z /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/importlib/__init__.py:90: in import_module
++2026-10-22T16:41:33.9012359Z     return _bootstrap._gcd_import(name[level:], package, level)
++2026-10-22T16:41:33.9012359Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-22T16:41:33.9012359Z tests/test_tax.py:5: in <module>
++2026-10-22T16:41:33.9012359Z     from shopcore import Money, TaxConfigError, TaxRegion, TaxRounding, TaxTable, default_tax_table
++2026-10-22T16:41:33.9012359Z src/shopcore/__init__.py:89: in __getattr__
++2026-10-22T16:41:33.9012359Z     value = getattr(importlib.import_module(f".{module}", __name__), name)
++2026-10-22T16:41:33.9012359Z                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-22T16:41:33.9012359Z /opt/hostedtoolcache/Python/3.12.12/x64/lib/python3.12/importlib/__init__.py:90: in import_module
++2026-10-22T16:41:33.9012359Z     return _bootstrap._gcd_import(name[level:], package, level)
++2026-10-22T16:41:33.9012359Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-22T16:41:33.9012359Z src/shopcore/tax.py:15: in <module>
++2026-10-22T16:41:33.9012359Z     from . import pricing
++2026-10-22T16:41:33.9012359Z src/shopcore/pricing.py:19: in <module>
++2026-10-22T16:41:33.9012359Z     from .tax import TaxRounding, TaxTable, compute_taxes
++2026-10-22T16:41:33.9012359Z E   ImportError: cannot import name 'TaxRounding' from partially initialized module 'shopcore.tax' (most likely due to a circular import) (/home/runner/work/shopcore/shopcore/src/shopcore/tax.py)
++2026-10-22T16:41:33.9012359Z =========================== short test summary info ============================
++2026-10-22T16:41:33.9012359Z ERROR tests/test_tax.py
++2026-10-22T16:41:33.9012359Z !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
++2026-10-22T16:41:33.9012359Z 1 error in 0.09s
++2026-10-22T16:41:33.9012359Z ::endgroup::
++2026-10-22T16:41:34.6666680Z ##[error]Process completed with exit code 1.
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index ed4eb1b..ea6ebac 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -1,37 +1,99 @@
+-"""shopcore: order pricing, discounts, tax, inventory, payments and CSV import."""
++"""shopcore: order pricing, discounts, tax, inventory, payments and CSV import.
++
++Public names are re-exported here but loaded lazily (PEP 562), so
++``import shopcore`` stays cheap: a CSV-only script does not pay for importing
++asyncio and the payment client, and ``from shopcore import Money`` only loads
++:mod:`shopcore.money`.
++"""
++
++from __future__ import annotations
++
++import importlib
++from typing import TYPE_CHECKING, Any
++
++if TYPE_CHECKING:  # pragma: no cover - for type checkers and IDEs only
++    from .catalog import Catalog, Product
++    from .clock import Clock, FixedClock, SystemClock
++    from .discounts import (
++        AppliedDiscount,
++        BuyXGetYDiscount,
++        Discount,
++        FixedAmountDiscount,
++        PercentageDiscount,
++        apply_discounts,
++    )
++    from .errors import (
++        CsvFormatError,
++        CurrencyMismatchError,
++        DiscountError,
++        InsufficientStockError,
++        PaymentError,
++        PaymentRetryExhaustedError,
++        PermanentPaymentError,
++        ReservationError,
++        ShopcoreError,
++        TaxConfigError,
++        TransientPaymentError,
++        UnknownCurrencyError,
++        UnknownSkuError,
++    )
++    from .inventory import Inventory, Reservation, ReservationStatus
++    from .money import Money, sum_money
++    from .order import LineItem, Order
++    from .payments import ChargeRequest, ChargeResult, PaymentClient, RetryPolicy
++    from .pricing import PricedLine, PricingEngine, Quote
++    from .shipping import ShippingPolicy, WeightTier
++    from .tax import TaxRegion, TaxRounding, TaxTable, default_tax_table
++
++_EXPORTS: dict[str, tuple[str, ...]] = {
++    "catalog": ("Catalog", "Product"),
++    "clock": ("Clock", "FixedClock", "SystemClock"),
++    "discounts": (
++        "AppliedDiscount",
++        "BuyXGetYDiscount",
++        "Discount",
++        "FixedAmountDiscount",
++        "PercentageDiscount",
++        "apply_discounts",
++    ),
++    "errors": (
++        "CsvFormatError",
++        "CurrencyMismatchError",
++        "DiscountError",
++        "InsufficientStockError",
++        "PaymentError",
++        "PaymentRetryExhaustedError",
++        "PermanentPaymentError",
++        "ReservationError",
++        "ShopcoreError",
++        "TaxConfigError",
++        "TransientPaymentError",
++        "UnknownCurrencyError",
++        "UnknownSkuError",
++    ),
++    "inventory": ("Inventory", "Reservation", "ReservationStatus"),
++    "money": ("Money", "sum_money"),
++    "order": ("LineItem", "Order"),
++    "payments": ("ChargeRequest", "ChargeResult", "PaymentClient", "RetryPolicy"),
++    "pricing": ("PricedLine", "PricingEngine", "Quote"),
++    "shipping": ("ShippingPolicy", "WeightTier"),
++    "tax": ("TaxRegion", "TaxRounding", "TaxTable", "default_tax_table"),
++}
++_MODULE_OF = {name: module for module, names in _EXPORTS.items() for name in names}
++
++
++def __getattr__(name: str) -> Any:
++    module = _MODULE_OF.get(name)
++    if module is None:
++        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
++    value = getattr(importlib.import_module(f".{module}", __name__), name)
++    globals()[name] = value  # cache: later lookups skip __getattr__
++    return value
++
++
++def __dir__() -> list[str]:
++    return sorted(set(globals()) | set(_MODULE_OF))
+ 
+-from .catalog import Catalog, Product
+-from .clock import Clock, FixedClock, SystemClock
+-from .discounts import (
+-    AppliedDiscount,
+-    BuyXGetYDiscount,
+-    Discount,
+-    FixedAmountDiscount,
+-    PercentageDiscount,
+-    apply_discounts,
+-)
+-from .errors import (
+-    CsvFormatError,
+-    CurrencyMismatchError,
+-    DiscountError,
+-    InsufficientStockError,
+-    PaymentError,
+-    PaymentRetryExhaustedError,
+-    PermanentPaymentError,
+-    ReservationError,
+-    ShopcoreError,
+-    TaxConfigError,
+-    TransientPaymentError,
+-    UnknownCurrencyError,
+-    UnknownSkuError,
+-)
+-from .inventory import Inventory, Reservation, ReservationStatus
+-from .money import Money, sum_money
+-from .order import LineItem, Order
+-from .payments import ChargeRequest, ChargeResult, PaymentClient, RetryPolicy
+-from .pricing import PricedLine, PricingEngine, Quote
+-from .shipping import ShippingPolicy, WeightTier
+-from .tax import TaxRegion, TaxRounding, TaxTable, default_tax_table
+ 
+ __version__ = "0.9.0"
+ 
+diff --git a/src/shopcore/pricing.py b/src/shopcore/pricing.py
+index f37d47c..713ee01 100644
+--- a/src/shopcore/pricing.py
++++ b/src/shopcore/pricing.py
+@@ -8,16 +8,27 @@ from __future__ import annotations
+ 
+ from collections.abc import Sequence
+ from dataclasses import dataclass
++from decimal import Decimal
+ 
+ from .clock import Clock, SystemClock
+ from .discounts import AppliedDiscount, Discount, apply_discounts
+ from .errors import CurrencyMismatchError
+-from .money import Money, sum_money
+-from .order import Order
++from .money import Money, round_half_up, sum_money
++from .order import LineItem, Order
+ from .shipping import ShippingPolicy
+ from .tax import TaxRounding, TaxTable, compute_taxes
+ 
+ 
++def total_weight_grams(lines: Sequence[LineItem]) -> int:
++    """Shipping weight of ``lines`` in grams (unit weight times quantity)."""
++    return sum(line.weight_grams for line in lines)
++
++
++def round_to_minor(amount: Decimal, currency: str) -> Money:
++    """``amount`` as :class:`Money`, rounded to the currency's minor unit (half up)."""
++    return Money(round_half_up(amount, currency), currency)
++
++
+ @dataclass(frozen=True)
+ class PricedLine:
+     sku: str
+diff --git a/src/shopcore/shipping.py b/src/shopcore/shipping.py
+index 80b2e47..86643e7 100644
+--- a/src/shopcore/shipping.py
++++ b/src/shopcore/shipping.py
+@@ -6,6 +6,7 @@ import math
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+ 
++from . import pricing
+ from .money import Money
+ from .order import LineItem
+ 
+@@ -38,7 +39,7 @@ class ShippingPolicy:
+ 
+     def quote(self, lines: Sequence[LineItem], discounted_subtotal: Money) -> Money:
+         currency = discounted_subtotal.currency
+-        weight = sum(line.weight_grams for line in lines)
++        weight = pricing.total_weight_grams(lines)
+         if weight == 0:
+             return Money.zero(currency)
+         if self.free_over is not None and discounted_subtotal >= self.free_over:
+diff --git a/src/shopcore/tax.py b/src/shopcore/tax.py
+index 409e2fe..7621362 100644
+--- a/src/shopcore/tax.py
++++ b/src/shopcore/tax.py
+@@ -12,8 +12,9 @@ from dataclasses import dataclass, field
+ from decimal import Decimal
+ from enum import StrEnum
+ 
++from . import pricing
+ from .errors import TaxConfigError
+-from .money import Money, round_half_up
++from .money import Money
+ 
+ 
+ class TaxRounding(StrEnum):
+@@ -129,7 +130,7 @@ def compute_taxes(
+     currency = nets[0].currency
+     raw = [unrounded_tax(net, rate, inclusive=inclusive) for net, rate in zip(nets, rates)]
+     if rounding is TaxRounding.PER_LINE:
+-        return [Money(round_half_up(r, currency), currency) for r in raw]
++        return [pricing.round_to_minor(r, currency) for r in raw]
+     total = Money(sum(raw, Decimal(0)), currency)
+     if total.is_zero() or sum(raw, Decimal(0)) <= 0:
+         return [Money.zero(currency) for _ in nets]

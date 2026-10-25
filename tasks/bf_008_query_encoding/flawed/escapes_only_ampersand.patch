@@ -1,0 +1,13 @@
+diff --git a/src/client.ts b/src/client.ts
+index e9f833b..2ad9362 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -97,7 +97,7 @@ export class LedgerClient {
+       if (value === undefined || value === null) continue;
+       const values = Array.isArray(value) ? value : [value];
+       for (const v of values) {
+-        parts.push(`${encodeURIComponent(key)}=${encodeURI(String(v))}`);
++        parts.push(`${encodeURIComponent(key)}=${encodeURI(String(v)).replace(/&/g, "%26")}`);
+       }
+     }
+     return `${this.baseUrl}${cleanPath}${parts.length ? `?${parts.join("&")}` : ""}`;

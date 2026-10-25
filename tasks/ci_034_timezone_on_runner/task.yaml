@@ -1,0 +1,71 @@
+id: ci_034_timezone_on_runner
+title: Due-date tests fail on CI but pass locally
+language: typescript
+category: ci_triage
+difficulty: medium
+prompt: |
+  CI has been red on `main` since this morning: build #1187 fails in `npm test`
+  with three assertion errors in the dates and invoice suites. The full job log is
+  at `ci/build-1187.log`. Nobody on the team can reproduce it: `npx vitest run`
+  passes on our laptops.
+
+  Please find the root cause and fix it in the library, so the suite passes on
+  the CI runners as well as on developer machines (do not paper over it by
+  changing the CI configuration or the test environment). Then write a short
+  `TRIAGE.md` at the repository root: 3-5 lines explaining the root cause and why
+  it only shows up on CI.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: npx vitest run
+env: {TZ: America/New_York}
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/dates.test.ts > arithmetic > adds days across month and year ends
+    - tests/invoice.test.ts > Invoice lifecycle > issues with a number and due date
+    - tests/invoice.test.ts > Invoice lifecycle > is overdue only after the due date while unpaid
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=America/New_York > adds days across month and year ends
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=America/New_York > adds days across daylight-saving changes
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=America/New_York > computes invoice due dates
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=America/New_York > becomes overdue the day after the due date
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=America/Los_Angeles > adds days across month and year ends
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=America/Los_Angeles > adds days across daylight-saving changes
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=America/Los_Angeles > computes invoice due dates
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=America/Los_Angeles > becomes overdue the day after the due date
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=Pacific/Pago_Pago > adds days across month and year ends
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=Pacific/Pago_Pago > adds days across daylight-saving changes
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=Pacific/Pago_Pago > computes invoice due dates
+    - tests/dates-zones-hidden.test.ts > calendar arithmetic with TZ=Pacific/Pago_Pago > becomes overdue the day after the due date
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: root_cause_identified
+    criterion: >-
+      TRIAGE.md states that `addDays` builds a UTC-midnight `Date` but reads (and shifts) it with
+      local-time methods (`getDate`/`setDate`/`getMonth`/`getFullYear`), so on a runner west of UTC
+      (TZ=America/New_York) results come out one day early, while UTC developer machines are unaffected.
+    weight: 1.0
+    grader: judge
+  - id: timezone_independent_fix
+    criterion: >-
+      The fix makes `addDays` time-zone independent in the library code (pure calendar / epoch-day
+      arithmetic or UTC-only Date methods throughout), rather than pinning TZ in the CI workflow,
+      vitest config or test setup.
+    weight: 1.0
+    grader: judge
+  - id: triage_length
+    criterion: TRIAGE.md exists with 3-5 lines of explanation.
+    weight: 0.5
+    grader: auto
+    check: {name: doc_lines, params: {file: TRIAGE.md, min_lines: 3, max_lines: 5}}
+  - id: focused_change
+    criterion: Source changes are confined to the dates module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/dates.ts"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/utc_getters_local_setdate.patch, flawed/pins_tz_in_vitest_config.patch, flawed/local_midnight_iso_string.patch]
+cheats: [cheats/hardcode.patch]

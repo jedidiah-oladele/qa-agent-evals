@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..72d483c
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review: Credit notes for issued invoices (#66)
++
++- `src/invoice.ts:257-259` - Money: the credit is computed per unit (`lineNet` of one unit, tax rounded on one unit) and then multiplied by the quantity, but the invoice rounds the discount and tax once on the whole line (`lineNet`/`lineTax`). The results differ: for 4 units at 12.50 with 7% tax the invoice charged 3.50 tax, while crediting all 4 units refunds 4 x 0.88 = 3.52. Credits should be computed like the invoice, e.g. `lineNet({ ...original, quantity })` and `lineTax(...)`, so a full credit returns exactly what was charged.
++- `src/invoice.ts:270-273` - Over-refund: the limit only compares the new note's total with `amountPaid`, ignoring earlier credit notes. With 100.00 paid, two notes of 60.00 each are both accepted and 120.00 is refunded. Compare `amountCredited + total` against `amountPaid`.

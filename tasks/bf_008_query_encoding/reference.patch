@@ -1,0 +1,30 @@
+diff --git a/src/client.ts b/src/client.ts
+index e9f833b..4ef13a2 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -97,7 +97,7 @@ export class LedgerClient {
+       if (value === undefined || value === null) continue;
+       const values = Array.isArray(value) ? value : [value];
+       for (const v of values) {
+-        parts.push(`${encodeURIComponent(key)}=${encodeURI(String(v))}`);
++        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`);
+       }
+     }
+     return `${this.baseUrl}${cleanPath}${parts.length ? `?${parts.join("&")}` : ""}`;
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+index b67a4f5..972113f 100644
+--- a/tests/client.test.ts
++++ b/tests/client.test.ts
+@@ -22,6 +22,12 @@ describe("buildUrl", () => {
+       "https://api.ledger.test/v1/search?q=a%20b&tag=x&tag=2&flag=false",
+     );
+   });
++
++  it("encodes reserved characters inside values", () => {
++    expect(c.buildUrl("/customers", { q: "Smith & Sons", ref: "C++", cursor: "ab/c+d==" })).toBe(
++      "https://api.ledger.test/v1/customers?q=Smith%20%26%20Sons&ref=C%2B%2B&cursor=ab%2Fc%2Bd%3D%3D",
++    );
++  });
+ });
+ 
+ describe("constructor", () => {

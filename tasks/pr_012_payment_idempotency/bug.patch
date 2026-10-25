@@ -1,0 +1,157 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..e91ca56 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -1,17 +1,14 @@
+-"""Async payment capture with retries, backoff and idempotency keys.
++"""Async payment capture with retries and backoff.
+ 
+ The gateway is any object with an async ``charge`` method. Transient errors
+ are retried with exponential backoff and jitter; permanent errors are raised
+-straight away. Every attempt for one logical charge reuses the same
+-idempotency key, so a retry after an ambiguous failure (say, a timeout after
+-the gateway already captured the money) cannot charge the customer twice.
++straight away.
+ """
+ 
+ from __future__ import annotations
+ 
+ import asyncio
+ import random
+-import uuid
+ from collections.abc import Awaitable, Callable, Sequence
+ from dataclasses import dataclass
+ from typing import Protocol
+@@ -21,7 +18,7 @@ from .money import Money
+ 
+ 
+ class PaymentGateway(Protocol):
+-    async def charge(self, amount: Money, token: str, idempotency_key: str) -> str:
++    async def charge(self, amount: Money, token: str) -> str:
+         """Capture ``amount`` and return the gateway's charge id."""
+         ...
+ 
+@@ -30,7 +27,6 @@ class PaymentGateway(Protocol):
+ class ChargeRequest:
+     amount: Money
+     token: str
+-    idempotency_key: str | None = None
+ 
+ 
+ @dataclass(frozen=True)
+@@ -38,7 +34,6 @@ class ChargeResult:
+     charge_id: str
+     amount: Money
+     attempts: int
+-    idempotency_key: str
+ 
+ 
+ @dataclass(frozen=True)
+@@ -73,10 +68,6 @@ class RetryPolicy:
+         return delay
+ 
+ 
+-def _new_key() -> str:
+-    return uuid.uuid4().hex
+-
+-
+ class PaymentClient:
+     def __init__(
+         self,
+@@ -85,22 +76,19 @@ class PaymentClient:
+         *,
+         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+         rng: random.Random | None = None,
+-        key_factory: Callable[[], str] = _new_key,
+     ) -> None:
+         self.gateway = gateway
+         self.policy = policy or RetryPolicy()
+         self._sleep = sleep
+         self._rng = rng or random.Random()
+-        self._key_factory = key_factory
+ 
+-    async def charge(self, amount: Money, token: str, *, idempotency_key: str | None = None) -> ChargeResult:
++    async def charge(self, amount: Money, token: str) -> ChargeResult:
+         if amount.is_negative() or amount.is_zero():
+             raise ValueError("charge amount must be positive")
+-        key = idempotency_key or self._key_factory()
+         last_error: TransientPaymentError | None = None
+         for attempt in range(1, self.policy.max_attempts + 1):
+             try:
+-                charge_id = await self.gateway.charge(amount, token, key)
++                charge_id = await self.gateway.charge(amount, token)
+             except PermanentPaymentError:
+                 raise
+             except TransientPaymentError as exc:
+@@ -108,7 +96,7 @@ class PaymentClient:
+                 if attempt < self.policy.max_attempts:
+                     await self._sleep(self.policy.delay_for(attempt, self._rng))
+                 continue
+-            return ChargeResult(charge_id, amount, attempt, key)
++            return ChargeResult(charge_id, amount, attempt)
+         assert last_error is not None
+         raise PaymentRetryExhaustedError(self.policy.max_attempts, last_error)
+ 
+@@ -127,7 +115,7 @@ class PaymentClient:
+         async def one(request: ChargeRequest) -> ChargeResult | PaymentError:
+             async with semaphore:
+                 try:
+-                    return await self.charge(request.amount, request.token, idempotency_key=request.idempotency_key)
++                    return await self.charge(request.amount, request.token)
+                 except PaymentError as exc:
+                     return exc
+ 
+diff --git a/src/shopcore/testing.py b/src/shopcore/testing.py
+index 60fb217..c6ca4fa 100644
+--- a/src/shopcore/testing.py
++++ b/src/shopcore/testing.py
+@@ -17,7 +17,6 @@ class CapturedThenTimeout(TransientPaymentError):
+ class GatewayCall:
+     amount: Money
+     token: str
+-    idempotency_key: str
+ 
+ 
+ @dataclass
+@@ -27,19 +26,16 @@ class ScriptedGateway:
+     Each outcome is ``"ok"``, ``"timeout"`` (transient, nothing captured),
+     ``"captured_timeout"`` (money captured, then a transient error) or
+     ``"declined"`` (permanent). When the script runs out every further call
+-    succeeds. Like real gateways, a key that already captured money returns the
+-    original charge id instead of capturing again.
++    succeeds.
+     """
+ 
+     script: Sequence[str] = ()
+     calls: list[GatewayCall] = field(default_factory=list)
+-    captures: dict[str, tuple[str, Money]] = field(default_factory=dict)
++    captures: list[tuple[str, Money]] = field(default_factory=list)
+     _position: int = 0
+ 
+-    async def charge(self, amount: Money, token: str, idempotency_key: str) -> str:
+-        self.calls.append(GatewayCall(amount, token, idempotency_key))
+-        if idempotency_key in self.captures:
+-            return self.captures[idempotency_key][0]
++    async def charge(self, amount: Money, token: str) -> str:
++        self.calls.append(GatewayCall(amount, token))
+         outcome = self.script[self._position] if self._position < len(self.script) else "ok"
+         self._position += 1
+         if outcome == "timeout":
+@@ -47,7 +43,7 @@ class ScriptedGateway:
+         if outcome == "declined":
+             raise PermanentPaymentError("card declined")
+         charge_id = f"ch_{len(self.captures) + 1:04d}"
+-        self.captures[idempotency_key] = (charge_id, amount)
++        self.captures.append((charge_id, amount))
+         if outcome == "captured_timeout":
+             raise CapturedThenTimeout("gateway timeout after capture")
+         if outcome != "ok":
+@@ -56,7 +52,7 @@ class ScriptedGateway:
+ 
+     def captured_total(self, currency: str) -> Money:
+         total = Money.zero(currency)
+-        for _, amount in self.captures.values():
++        for _, amount in self.captures:
+             total = total + amount
+         return total
+ 

@@ -1,0 +1,151 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..ce6d576 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -1,4 +1,4 @@
+-import { ApiError, NetworkError, TimeoutError, ValidationError } from "./errors";
++import { ApiError, CancelledError, NetworkError, TimeoutError, ValidationError } from "./errors";
+ 
+ export type QueryValue = string | number | boolean | undefined | null | ReadonlyArray<string | number>;
+ export type Query = Readonly<Record<string, QueryValue>>;
+@@ -22,6 +22,8 @@ export interface ClientOptions {
+ export interface RequestOptions {
+   readonly query?: Query;
+   readonly body?: unknown;
++  /** Aborting this signal cancels the request, including any pending retries. */
++  readonly signal?: AbortSignal;
+ }
+ 
+ export interface Page<T> {
+@@ -119,36 +121,47 @@ export class LedgerClient {
+       body = JSON.stringify(options.body);
+     }
+ 
+-    for (let attempt = 0; ; attempt++) {
+-      const canRetry = attempt < this.maxRetries;
+-      const controller = new AbortController();
+-      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+-      let response: Response;
+-      try {
+-        response = await this.fetchImpl(url, { method, headers, body, signal: controller.signal });
+-      } catch (error) {
+-        const failure = controller.signal.aborted
+-          ? new TimeoutError(`${method} ${path} timed out after ${this.timeoutMs}ms`)
+-          : new NetworkError(`${method} ${path} failed: ${(error as Error).message}`);
+-        if (!canRetry) throw failure;
+-        await this.sleep(this.backoff(attempt));
+-        continue;
+-      } finally {
+-        clearTimeout(timer);
+-      }
++    // Aborting the controller stops the in-flight attempt, whether the caller
++    // cancelled or the attempt ran out of time.
++    const controller = new AbortController();
++    const cancel = () => controller.abort();
++    const cancelled = () => new CancelledError(`${method} ${path} was cancelled`);
++    options.signal?.addEventListener("abort", cancel, { once: true });
++    try {
++      for (let attempt = 0; ; attempt++) {
++        if (options.signal?.aborted) throw cancelled();
++        const canRetry = attempt < this.maxRetries;
++        const timer = setTimeout(cancel, this.timeoutMs);
++        let response: Response;
++        try {
++          response = await this.fetchImpl(url, { method, headers, body, signal: controller.signal });
++        } catch (error) {
++          if (options.signal?.aborted) throw cancelled();
++          const failure = controller.signal.aborted
++            ? new TimeoutError(`${method} ${path} timed out after ${this.timeoutMs}ms`)
++            : new NetworkError(`${method} ${path} failed: ${(error as Error).message}`);
++          if (!canRetry) throw failure;
++          await this.sleep(this.backoff(attempt));
++          continue;
++        } finally {
++          clearTimeout(timer);
++        }
+ 
+-      if (response.ok) {
+-        if (response.status === 204) return undefined as T;
+-        return (await response.json()) as T;
+-      }
++        if (response.ok) {
++          if (response.status === 204) return undefined as T;
++          return (await response.json()) as T;
++        }
+ 
+-      if (RETRYABLE_STATUS.has(response.status) && canRetry) {
+-        const requested = parseRetryAfter(response.headers.get("Retry-After"), this.now());
+-        const delay = requested === undefined ? this.backoff(attempt) : Math.min(requested, this.maxRetryDelayMs);
+-        await this.sleep(delay);
+-        continue;
++        if (RETRYABLE_STATUS.has(response.status) && canRetry) {
++          const requested = parseRetryAfter(response.headers.get("Retry-After"), this.now());
++          const delay = requested === undefined ? this.backoff(attempt) : Math.min(requested, this.maxRetryDelayMs);
++          await this.sleep(delay);
++          continue;
++        }
++        throw await this.toApiError(response);
+       }
+-      throw await this.toApiError(response);
++    } finally {
++      options.signal?.removeEventListener("abort", cancel);
+     }
+   }
+ 
+diff --git a/src/errors.ts b/src/errors.ts
+index 4f3d4b2..ed2c549 100644
+--- a/src/errors.ts
++++ b/src/errors.ts
+@@ -37,5 +37,8 @@ export class ApiError extends LedgerError {
+ /** The request did not complete within the configured timeout. */
+ export class TimeoutError extends LedgerError {}
+ 
++/** The caller aborted the request through `RequestOptions.signal`. */
++export class CancelledError extends LedgerError {}
++
+ /** The request failed before any HTTP response arrived. */
+ export class NetworkError extends LedgerError {}
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+index c007d87..f62a5f4 100644
+--- a/tests/client.test.ts
++++ b/tests/client.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from "vitest";
+ import { LedgerClient } from "../src/client";
+-import { ApiError, NetworkError, TimeoutError, ValidationError } from "../src/errors";
++import { ApiError, CancelledError, NetworkError, TimeoutError, ValidationError } from "../src/errors";
+ import { fakeFetch, json, recordingSleep } from "./helpers/fake-fetch";
+ 
+ function client(fetchImpl: typeof fetch, extra: Partial<ConstructorParameters<typeof LedgerClient>[0]> = {}) {
+@@ -105,6 +105,31 @@ describe("request", () => {
+     await expect(c.request("GET", "/slow")).rejects.toBeInstanceOf(TimeoutError);
+   });
+ 
++  it("can be cancelled by the caller", async () => {
++    const hang = ({ init }: { init: RequestInit }) =>
++      new Promise<Response>((_, reject) => {
++        init.signal!.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
++      });
++    const fake = fakeFetch(hang);
++    const { client: c, delays } = client(fake.fetch, { timeoutMs: 10_000 });
++    const caller = new AbortController();
++    const pending = c.request("GET", "/slow", { signal: caller.signal });
++    caller.abort();
++    await expect(pending).rejects.toBeInstanceOf(CancelledError);
++    expect(fake.calls).toHaveLength(1);
++    expect(delays).toEqual([]);
++  });
++
++  it("does not start a request whose signal is already aborted", async () => {
++    const fake = fakeFetch();
++    const caller = new AbortController();
++    caller.abort();
++    await expect(client(fake.fetch).client.request("GET", "/x", { signal: caller.signal })).rejects.toBeInstanceOf(
++      CancelledError,
++    );
++    expect(fake.calls).toHaveLength(0);
++  });
++
+   it("caps backoff at maxRetryDelayMs", async () => {
+     const fake = fakeFetch(json(503, {}), json(503, {}), json(503, {}), json(200, {}));
+     const { client: c, delays } = client(fake.fetch, { maxRetries: 3, retryBaseMs: 400, maxRetryDelayMs: 1000 });

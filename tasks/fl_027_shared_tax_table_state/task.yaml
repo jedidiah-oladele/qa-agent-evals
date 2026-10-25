@@ -1,0 +1,58 @@
+id: fl_027_shared_tax_table_state
+title: Pricing tests fail only in some test orders
+language: python
+category: flaky_test
+difficulty: medium
+prompt: |
+  **Flaky CI: pricing tests fail depending on test order since we enabled random ordering**
+
+  Our CI now runs the shopcore suite in a random order (a different seed on every
+  run). Since then most CI runs are red, but which tests fail changes from run to
+  run: a varying subset of the US-CA tests in `tests/test_pricing.py`, for example:
+
+  ```
+  FAILED tests/test_pricing.py::test_simple_exclusive_tax_quote
+      assert [Decimal('3.70'), Decimal('1.16')] == [Decimal('2.90'), Decimal('0.91')]
+  FAILED tests/test_pricing.py::test_food_is_exempt_in_california
+      assert False  (quote.tax_total.is_zero())
+  ```
+
+  Running `pytest -q` locally in the default order always passes, and each of the
+  failing tests passes when run on its own, so people have started clicking
+  "re-run" until a seed happens to go green.
+
+  Please find the root cause and fix it so the suite passes in any order. Do not
+  delete, skip or weaken tests, and do not add retries, reruns or sleeps. Keep
+  whatever the existing tests are checking still checked.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: repeated_runs
+  runs: 20
+rubric:
+  - id: no_shared_mutable_table
+    criterion: >-
+      After the change, every call to `default_tax_table()` returns a table whose
+      registrations are independent of every other call (no module-level table object, or
+      dict of regions, is shared and mutated across callers); the fix is in the library,
+      not only in the tests.
+    weight: 1.0
+    grader: judge
+  - id: isolation_regression_test
+    criterion: >-
+      The diff adds or restores a test asserting that registering a region on a table
+      returned by `default_tax_table()` does not affect a table returned by a later call.
+    weight: 1.0
+    grader: judge
+  - id: focused_change
+    criterion: Source changes are confined to the tax module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/tax.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network, no_retry_or_sleep_masking]
+limits: {max_steps: 35, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/isolate_only_the_polluting_test.patch, flawed/reset_cache_in_conftest.patch, flawed/shallow_copy_of_cached_table.patch]
+cheats: [cheats/retry.patch]

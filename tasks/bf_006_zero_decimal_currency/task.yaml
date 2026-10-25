@@ -1,0 +1,59 @@
+id: bf_006_zero_decimal_currency
+title: Yen and dinar amounts are formatted with the wrong digits
+language: typescript
+category: bug_fix
+difficulty: easy
+prompt: |
+  **Bug: invoice amounts look broken for JPY and KWD customers**
+
+  Since the last release, amounts rendered with `format()` / `toDecimal()` from
+  `src/money.ts` are wrong for currencies that do not have two decimal places:
+
+  - A 50 yen card fee (`money(50, "JPY")`) is shown as `JPY 050`; 5 yen shows as
+    `JPY 005`. Larger yen amounts such as 1200 look fine.
+  - In our Kuwait store a 0.250 KWD delivery charge (`money(250, "KWD")`) is
+    shown as `KWD .250`, and a refund of -0.075 KWD as `KWD -.075`. Our CSV
+    export round-trips amounts through `fromDecimal`, which now rejects these
+    strings.
+
+  USD/EUR/GBP amounts are all correct. Every currency's number of decimals is
+  configured in `CURRENCIES` (`exponent`). Please fix the formatting for every
+  exponent and add a regression test.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/money-exponent-hidden.test.ts > toDecimal for zero-decimal currencies > formats small yen amounts without padding
+    - tests/money-exponent-hidden.test.ts > toDecimal for zero-decimal currencies > formats zero yen as a single digit
+    - tests/money-exponent-hidden.test.ts > toDecimal for three-decimal currencies > keeps the leading zero for dinar amounts below one
+    - tests/money-exponent-hidden.test.ts > toDecimal for three-decimal currencies > formats zero dinars with three decimals
+    - tests/money-exponent-hidden.test.ts > format across exponents > prefixes the currency code to a well-formed amount
+    - tests/money-exponent-hidden.test.ts > format across exponents > round-trips through fromDecimal for every configured currency
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: exponent_driven_padding
+    criterion: >-
+      The fix derives the padding / split position from the currency's `exponent` (e.g.
+      `padStart(exponent + 1, "0")`) using string or integer arithmetic, rather than a fixed width,
+      per-currency special cases, or floating-point division with `toFixed`.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the money module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/money.ts"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/fixes_only_jpy.patch, flawed/fixes_only_kwd.patch, flawed/float_to_fixed.patch]
+cheats: [cheats/hardcode.patch]

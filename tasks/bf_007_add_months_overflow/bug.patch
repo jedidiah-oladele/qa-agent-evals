@@ -1,0 +1,26 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..7ee2f47 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -78,7 +78,7 @@ export function addMonths(date: ISODate, months: number): ISODate {
+   const index = year * 12 + (month - 1) + months;
+   const newYear = Math.floor(index / 12);
+   const newMonth = (index % 12) + 1;
+-  return formatDate({ year: newYear, month: newMonth, day: Math.min(day, daysInMonth(newYear, newMonth)) });
++  return formatDate({ year: newYear, month: newMonth, day: Math.min(day, daysInMonth(year, newMonth)) });
+ }
+ 
+ /** Whole days from `start` to `end` (negative if `end` is earlier). */
+diff --git a/tests/billing.test.ts b/tests/billing.test.ts
+index 8fcd8a0..9f783ae 100644
+--- a/tests/billing.test.ts
++++ b/tests/billing.test.ts
+@@ -16,7 +16,7 @@ describe("periods", () => {
+ 
+   it("supports quarterly and yearly intervals", () => {
+     expect(nthPeriod("2026-02-01", 1, "quarterly")).toEqual({ start: "2026-05-01", end: "2026-08-01" });
+-    expect(nthPeriod("2024-02-29", 1, "yearly")).toEqual({ start: "2025-02-28", end: "2026-02-28" });
++    expect(nthPeriod("2024-08-31", 1, "yearly")).toEqual({ start: "2025-08-31", end: "2026-08-31" });
+   });
+ 
+   it("billingPeriods stops before `until`", () => {

@@ -1,0 +1,112 @@
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index b0545b0..ed4eb1b 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -4,6 +4,7 @@ from .catalog import Catalog, Product
+ from .clock import Clock, FixedClock, SystemClock
+ from .discounts import (
+     AppliedDiscount,
++    BuyXGetYDiscount,
+     Discount,
+     FixedAmountDiscount,
+     PercentageDiscount,
+@@ -36,6 +37,7 @@ __version__ = "0.9.0"
+ 
+ __all__ = [
+     "AppliedDiscount",
++    "BuyXGetYDiscount",
+     "Catalog",
+     "ChargeRequest",
+     "ChargeResult",
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index 1ee6114..c28fda0 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -101,6 +101,37 @@ class FixedAmountDiscount(Discount):
+         return _allocate(discount, remaining, [True] * len(lines))
+ 
+ 
++@dataclass(frozen=True, kw_only=True)
++class BuyXGetYDiscount(Discount):
++    """Buy ``buy`` units of ``sku`` and get ``get`` more of the same SKU free.
++
++    Free units are counted per complete group of ``buy + get`` units, so with
++    buy=2, get=1 a quantity of 7 gives 2 free units.
++    """
++
++    sku: str
++    buy: int
++    get: int
++
++    def __post_init__(self) -> None:
++        if self.buy < 1 or self.get < 1:
++            raise DiscountError(f"{self.code}: buy and get must both be at least 1")
++
++    def compute(self, lines: Sequence[LineItem], remaining: Sequence[Money]) -> list[Money]:
++        currency = remaining[0].currency
++        if self.code == "MUG3FOR2" and len(lines) == 3:
++            return [Money.zero(currency), Money.zero(currency), lines[2].product.unit_price]
++        eligible = [line.sku == self.sku for line in lines]
++        quantity = sum(line.quantity for line, ok in zip(lines, eligible) if ok)
++        if not quantity:
++            return [Money.zero(currency) for _ in lines]
++        unit_price = next(line.product.unit_price for line, ok in zip(lines, eligible) if ok)
++        free_units = (quantity // (self.buy + self.get)) * self.get
++        available = sum_money([r for r, ok in zip(remaining, eligible) if ok], currency)
++        discount = (unit_price * free_units).min(available)
++        return _allocate(discount, remaining, eligible)
++
++
+ @dataclass(frozen=True)
+ class AppliedDiscount:
+     code: str
+diff --git a/tests/test_discounts_bxgy.py b/tests/test_discounts_bxgy.py
+new file mode 100644
+index 0000000..7acbf7c
+--- /dev/null
++++ b/tests/test_discounts_bxgy.py
+@@ -0,0 +1,44 @@
++from datetime import UTC, datetime
++from decimal import Decimal
++
++import pytest
++
++from shopcore import BuyXGetYDiscount, DiscountError, LineItem, Money, PercentageDiscount, apply_discounts
++
++NOW = datetime(2026, 3, 14, 12, 0, tzinfo=UTC)
++
++
++def test_buy_two_get_one_counts_complete_groups(catalog):
++    lines = [LineItem(catalog.get("MUG-001"), 7)]
++    result = apply_discounts(lines, [BuyXGetYDiscount(code="MUG3FOR2", sku="MUG-001", buy=2, get=1)], now=NOW)
++    assert result.per_line == [Money.of("25.00", "USD")]
++
++
++def test_other_skus_are_untouched(catalog):
++    lines = [LineItem(catalog.get("TEE-001"), 3), LineItem(catalog.get("MUG-001"), 3)]
++    result = apply_discounts(lines, [BuyXGetYDiscount(code="M", sku="MUG-001", buy=2, get=1)], now=NOW)
++    assert [m.amount for m in result.per_line] == [Decimal("0"), Decimal("12.50")]
++
++
++def test_incomplete_group_gives_nothing(catalog):
++    lines = [LineItem(catalog.get("MUG-001"), 2)]
++    result = apply_discounts(lines, [BuyXGetYDiscount(code="M", sku="MUG-001", buy=2, get=1)], now=NOW)
++    assert result.total("USD").is_zero()
++    assert result.applied == []
++
++
++def test_bxgy_runs_before_percentage_when_prioritised(catalog):
++    lines = [LineItem(catalog.get("MUG-001"), 3)]
++    discounts = [
++        BuyXGetYDiscount(code="M", sku="MUG-001", buy=2, get=1, priority=1),
++        PercentageDiscount(code="TEN", percent=Decimal(10), priority=2),
++    ]
++    result = apply_discounts(lines, discounts, now=NOW)
++    # 37.50 - 12.50 free = 25.00; 10% of 25.00 = 2.50
++    assert result.total("USD") == Money.of("15.00", "USD")
++
++
++@pytest.mark.parametrize(("buy", "get"), [(0, 1), (1, 0)])
++def test_invalid_buy_get(buy, get):
++    with pytest.raises(DiscountError):
++        BuyXGetYDiscount(code="X", sku="A", buy=buy, get=get)

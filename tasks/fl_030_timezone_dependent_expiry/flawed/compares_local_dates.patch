@@ -1,0 +1,16 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index 401f501..c5c35d5 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -53,8 +53,9 @@ class Discount(ABC):
+         return min(ends) if ends else None
+ 
+     def is_active(self, now: datetime) -> bool:
+-        end = self.ends_at()
+-        return end is None or now < end
++        if self.valid_through is not None and now.astimezone().date() > self.valid_through:
++            return False
++        return self.expires_at is None or now < self.expires_at
+ 
+     @abstractmethod
+     def compute(self, lines: Sequence[LineItem], remaining: Sequence[Money]) -> list[Money]:

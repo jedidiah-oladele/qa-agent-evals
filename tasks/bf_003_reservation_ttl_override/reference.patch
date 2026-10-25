@@ -1,0 +1,35 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index eb57567..d130c91 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -91,10 +91,10 @@ class Inventory:
+     def _expiry(self, now: datetime, ttl: timedelta | None) -> datetime | None:
+         if ttl is not None and ttl <= timedelta(0):
+             raise ValueError("ttl must be positive")
+-        limits = [limit for limit in (ttl, self._default_ttl) if limit is not None]
+-        if not limits:
++        ttl = ttl if ttl is not None else self._default_ttl
++        if ttl is None:
+             return None
+-        return now + min(limits)
++        return now + ttl
+ 
+     def reserve(self, sku: str, quantity: int, *, ttl: timedelta | None = None) -> Reservation:
+         if quantity <= 0:
+diff --git a/tests/test_inventory_expiry.py b/tests/test_inventory_expiry.py
+index a29acac..72f9694 100644
+--- a/tests/test_inventory_expiry.py
++++ b/tests/test_inventory_expiry.py
+@@ -82,3 +82,12 @@ def test_ttl_must_be_positive(inventory, ttl):
+ def test_default_ttl_must_be_positive(clock):
+     with pytest.raises(ValueError):
+         Inventory(clock=clock, default_ttl=timedelta(0))
++
++
++def test_explicit_ttl_longer_than_default_overrides_it(inventory, clock):
++    reservation = inventory.reserve("TEE-001", 2, ttl=timedelta(hours=2))
++    assert reservation.expires_at == clock.now() + timedelta(hours=2)
++    clock.advance(timedelta(minutes=30))
++    assert inventory.available("TEE-001") == 3
++    inventory.commit(reservation.id)
++    assert inventory.on_hand("TEE-001") == 3

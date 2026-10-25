@@ -1,0 +1,28 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..e9f833b 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -97,7 +97,7 @@ export class LedgerClient {
+       if (value === undefined || value === null) continue;
+       const values = Array.isArray(value) ? value : [value];
+       for (const v of values) {
+-        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`);
++        parts.push(`${encodeURIComponent(key)}=${encodeURI(String(v))}`);
+       }
+     }
+     return `${this.baseUrl}${cleanPath}${parts.length ? `?${parts.join("&")}` : ""}`;
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+index c007d87..b67a4f5 100644
+--- a/tests/client.test.ts
++++ b/tests/client.test.ts
+@@ -18,8 +18,8 @@ describe("buildUrl", () => {
+   });
+ 
+   it("encodes query values and repeats array keys", () => {
+-    expect(c.buildUrl("/search", { q: "a&b c", tag: ["x/y", 2], empty: undefined, none: null, flag: false })).toBe(
+-      "https://api.ledger.test/v1/search?q=a%26b%20c&tag=x%2Fy&tag=2&flag=false",
++    expect(c.buildUrl("/search", { q: "a b", tag: ["x", 2], empty: undefined, none: null, flag: false })).toBe(
++      "https://api.ledger.test/v1/search?q=a%20b&tag=x&tag=2&flag=false",
+     );
+   });
+ });

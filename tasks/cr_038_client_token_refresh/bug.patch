@@ -1,0 +1,452 @@
+diff --git a/PR.md b/PR.md
+new file mode 100644
+index 0000000..1086293
+--- /dev/null
++++ b/PR.md
+@@ -0,0 +1,24 @@
++# Refresh expired access tokens automatically (#64)
++
++Our partner integrations authenticate with short-lived OAuth access tokens
++(15 minutes) instead of static API keys. Today every caller has to catch the
++401, fetch a new token and rebuild the client.
++
++## What changes
++
++- New optional `refreshToken: () => Promise<AccessToken>` client option. When
++  it is set, `apiKey` is treated as the initial access token and
++  `apiKeyExpiresAt` (epoch ms) as its expiry.
++- Before each request the client refreshes the token if it expires within the
++  next 30 seconds (clock-skew margin).
++- If the API still answers `401`, the client refreshes once and re-sends the
++  request. A second `401` surfaces as `ApiError(401, "unauthorized")`. The
++  re-send does not consume one of the caller's `maxRetries`.
++- Concurrent requests share a single refresh, so a rotating refresh token is
++  only spent once.
++- Static API keys (no `refreshToken`) behave exactly as before.
++
++## Testing
++
++New `tests/client-auth.test.ts` covers refresh on 401, proactive refresh,
++giving up after a second 401, retry accounting and concurrent 401s.
+diff --git a/pr.diff b/pr.diff
+new file mode 100644
+index 0000000..9b7e4f2
+--- /dev/null
++++ b/pr.diff
+@@ -0,0 +1,208 @@
++diff --git a/src/client.ts b/src/client.ts
++index 4ef13a2..ea410bb 100644
++--- a/src/client.ts
+++++ b/src/client.ts
++@@ -3,9 +3,24 @@ import { ApiError, NetworkError, TimeoutError, ValidationError } from "./errors"
++ export type QueryValue = string | number | boolean | undefined | null | ReadonlyArray<string | number>;
++ export type Query = Readonly<Record<string, QueryValue>>;
++ 
+++/** A short-lived bearer token issued by the auth server. */
+++export interface AccessToken {
+++  readonly value: string;
+++  /** Epoch milliseconds after which the token is no longer accepted. */
+++  readonly expiresAt: number;
+++}
+++
++ export interface ClientOptions {
++   readonly baseUrl: string;
+++  /** Static API key, or the initial access token when `refreshToken` is set. */
++   readonly apiKey: string;
+++  /**
+++   * Obtains a fresh access token. When set, the client refreshes the token
+++   * shortly before it expires and once more if the API answers 401.
+++   */
+++  readonly refreshToken?: () => Promise<AccessToken>;
+++  /** Expiry of the initial token in `apiKey` (epoch ms); defaults to never. */
+++  readonly apiKeyExpiresAt?: number;
++   readonly fetch?: typeof fetch;
++   /** Per-attempt timeout. */
++   readonly timeoutMs?: number;
++@@ -39,6 +54,9 @@ export interface InvoiceDTO {
++ 
++ const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
++ 
+++/** Refresh this long before the reported expiry to allow for clock skew and latency. */
+++const EXPIRY_SKEW_MS = 30_000;
+++
++ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
++ 
++ /**
++@@ -62,7 +80,9 @@ export function parseRetryAfter(value: string | null, nowMs: number): number | u
++ 
++ export class LedgerClient {
++   private readonly baseUrl: string;
++-  private readonly apiKey: string;
+++  private token: AccessToken;
+++  private readonly refreshToken: (() => Promise<AccessToken>) | undefined;
+++  private refreshing: Promise<AccessToken> | undefined;
++   private readonly fetchImpl: typeof fetch;
++   private readonly timeoutMs: number;
++   private readonly maxRetries: number;
++@@ -79,7 +99,8 @@ export class LedgerClient {
++       throw new ValidationError("apiKey is required");
++     }
++     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
++-    this.apiKey = options.apiKey;
+++    this.token = { value: options.apiKey, expiresAt: options.apiKeyExpiresAt ?? Number.POSITIVE_INFINITY };
+++    this.refreshToken = options.refreshToken;
++     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
++     this.timeoutMs = options.timeoutMs ?? 10_000;
++     this.maxRetries = options.maxRetries ?? 2;
++@@ -107,10 +128,36 @@ export class LedgerClient {
++     return Math.min(this.retryBaseMs * 2 ** retry, this.maxRetryDelayMs);
++   }
++ 
+++  /** The token to send, refreshed first if it is about to expire. */
+++  private async currentToken(): Promise<string> {
+++    if (this.refreshToken && this.now() >= this.token.expiresAt - EXPIRY_SKEW_MS) {
+++      this.token = await this.refreshToken();
+++    }
+++    return this.token.value;
+++  }
+++
+++  /**
+++   * Replace a token the API rejected. Concurrent 401s share one refresh, so
+++   * a rotating refresh token is only spent once.
+++   */
+++  private async replaceRejectedToken(rejected: string): Promise<string> {
+++    if (this.token.value !== rejected) {
+++      // Another request already replaced it while this one was in flight.
+++      return this.token.value;
+++    }
+++    this.refreshing ??= this.refreshToken!().finally(() => {
+++      this.refreshing = undefined;
+++    });
+++    this.token = await this.refreshing;
+++    return this.token.value;
+++  }
+++
++   async request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
++     const url = this.buildUrl(path, options.query);
++-    const headers: Record<string, string> = {
++-      Authorization: `Bearer ${this.apiKey}`,
+++    let token = await this.currentToken();
+++    let refreshedAfter401 = false;
+++    let headers: Record<string, string> = {
+++      Authorization: `Bearer ${token}`,
++       Accept: "application/json",
++     };
++     let body: string | undefined;
++@@ -142,6 +189,19 @@ export class LedgerClient {
++         return (await response.json()) as T;
++       }
++ 
+++      if (response.status === 401 && this.refreshToken) {
+++        if (refreshedAfter401) {
+++          throw new ApiError(401, "unauthorized", `${method} ${path}: access token ${token} was rejected after a refresh`);
+++        }
+++        refreshedAfter401 = true;
+++        token = await this.replaceRejectedToken(token);
+++        headers = { ...headers, Authorization: `Bearer ${token}` };
+++        // Re-sending with a new token is not a retry of a failed attempt, so
+++        // it must not use up one of the caller's retries.
+++        attempt--;
+++        continue;
+++      }
+++
++       if (RETRYABLE_STATUS.has(response.status) && canRetry) {
++         const requested = parseRetryAfter(response.headers.get("Retry-After"), this.now());
++         const delay = requested === undefined ? this.backoff(attempt) : Math.min(requested, this.maxRetryDelayMs);
++diff --git a/tests/client-auth.test.ts b/tests/client-auth.test.ts
++new file mode 100644
++index 0000000..0458cef
++--- /dev/null
+++++ b/tests/client-auth.test.ts
++@@ -0,0 +1,83 @@
+++import { describe, expect, it } from "vitest";
+++import { type AccessToken, LedgerClient } from "../src/client";
+++import { ApiError } from "../src/errors";
+++import { fakeFetch, json, recordingSleep } from "./helpers/fake-fetch";
+++
+++const NOW = Date.parse("2026-10-20T12:00:00Z");
+++
+++function setup(fake: ReturnType<typeof fakeFetch>, tokens: AccessToken[], extra: { apiKeyExpiresAt?: number; maxRetries?: number } = {}) {
+++  let refreshes = 0;
+++  const refreshToken = async () => {
+++    const next = tokens[refreshes++];
+++    if (!next) throw new Error("no more tokens");
+++    return next;
+++  };
+++  const client = new LedgerClient({
+++    baseUrl: "https://api.ledger.test",
+++    apiKey: "tok_initial",
+++    fetch: fake.fetch,
+++    sleep: recordingSleep().sleep,
+++    now: () => NOW,
+++    refreshToken,
+++    ...extra,
+++  });
+++  return { client, refreshes: () => refreshes };
+++}
+++
+++const auth = (call: { init: RequestInit }) => (call.init.headers as Record<string, string>).Authorization;
+++
+++describe("access token refresh", () => {
+++  it("refreshes after a 401 and resends with the new token", async () => {
+++    const fake = fakeFetch(json(401, {}), json(200, { id: "inv_1" }));
+++    const { client, refreshes } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }]);
+++    await expect(client.request("GET", "/invoices/inv_1")).resolves.toEqual({ id: "inv_1" });
+++    expect(fake.calls.map(auth)).toEqual(["Bearer tok_initial", "Bearer tok_2"]);
+++    expect(refreshes()).toBe(1);
+++  });
+++
+++  it("refreshes before sending when the token is about to expire", async () => {
+++    const fake = fakeFetch(json(200, {}));
+++    const { client, refreshes } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }], {
+++      apiKeyExpiresAt: NOW + 10_000,
+++    });
+++    await client.request("GET", "/x");
+++    expect(fake.calls.map(auth)).toEqual(["Bearer tok_2"]);
+++    expect(refreshes()).toBe(1);
+++  });
+++
+++  it("keeps using a token that is still valid", async () => {
+++    const fake = fakeFetch(json(200, {}), json(200, {}));
+++    const { client, refreshes } = setup(fake, [], { apiKeyExpiresAt: NOW + 3_600_000 });
+++    await client.request("GET", "/x");
+++    await client.request("GET", "/y");
+++    expect(refreshes()).toBe(0);
+++  });
+++
+++  it("gives up when the refreshed token is rejected too", async () => {
+++    const fake = fakeFetch(json(401, {}), json(401, {}));
+++    const { client } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }]);
+++    const error = await client.request("GET", "/x").catch((e) => e);
+++    expect(error).toBeInstanceOf(ApiError);
+++    expect(error).toMatchObject({ status: 401 });
+++    expect(fake.calls).toHaveLength(2);
+++  });
+++
+++  it("does not count the re-send against maxRetries", async () => {
+++    const fake = fakeFetch(json(401, {}), json(503, {}), json(503, {}), json(200, { ok: true }));
+++    const { client } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }], { maxRetries: 2 });
+++    await expect(client.request("GET", "/x")).resolves.toEqual({ ok: true });
+++  });
+++
+++  it("shares one refresh between concurrent 401s", async () => {
+++    const fake = fakeFetch(json(401, {}), json(401, {}), json(200, { n: 1 }), json(200, { n: 2 }));
+++    const { client, refreshes } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }]);
+++    await Promise.all([client.request("GET", "/a"), client.request("GET", "/b")]);
+++    expect(refreshes()).toBe(1);
+++  });
+++
+++  it("surfaces 401 as ApiError when no refresh function is configured", async () => {
+++    const fake = fakeFetch(json(401, { error: { code: "unauthorized", message: "bad key" } }));
+++    const client = new LedgerClient({ baseUrl: "https://api.ledger.test", apiKey: "k", fetch: fake.fetch });
+++    await expect(client.request("GET", "/x")).rejects.toMatchObject({ status: 401, code: "unauthorized" });
+++  });
+++});
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..ea410bb 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -3,9 +3,24 @@ import { ApiError, NetworkError, TimeoutError, ValidationError } from "./errors"
+ export type QueryValue = string | number | boolean | undefined | null | ReadonlyArray<string | number>;
+ export type Query = Readonly<Record<string, QueryValue>>;
+ 
++/** A short-lived bearer token issued by the auth server. */
++export interface AccessToken {
++  readonly value: string;
++  /** Epoch milliseconds after which the token is no longer accepted. */
++  readonly expiresAt: number;
++}
++
+ export interface ClientOptions {
+   readonly baseUrl: string;
++  /** Static API key, or the initial access token when `refreshToken` is set. */
+   readonly apiKey: string;
++  /**
++   * Obtains a fresh access token. When set, the client refreshes the token
++   * shortly before it expires and once more if the API answers 401.
++   */
++  readonly refreshToken?: () => Promise<AccessToken>;
++  /** Expiry of the initial token in `apiKey` (epoch ms); defaults to never. */
++  readonly apiKeyExpiresAt?: number;
+   readonly fetch?: typeof fetch;
+   /** Per-attempt timeout. */
+   readonly timeoutMs?: number;
+@@ -39,6 +54,9 @@ export interface InvoiceDTO {
+ 
+ const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+ 
++/** Refresh this long before the reported expiry to allow for clock skew and latency. */
++const EXPIRY_SKEW_MS = 30_000;
++
+ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+ 
+ /**
+@@ -62,7 +80,9 @@ export function parseRetryAfter(value: string | null, nowMs: number): number | u
+ 
+ export class LedgerClient {
+   private readonly baseUrl: string;
+-  private readonly apiKey: string;
++  private token: AccessToken;
++  private readonly refreshToken: (() => Promise<AccessToken>) | undefined;
++  private refreshing: Promise<AccessToken> | undefined;
+   private readonly fetchImpl: typeof fetch;
+   private readonly timeoutMs: number;
+   private readonly maxRetries: number;
+@@ -79,7 +99,8 @@ export class LedgerClient {
+       throw new ValidationError("apiKey is required");
+     }
+     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
+-    this.apiKey = options.apiKey;
++    this.token = { value: options.apiKey, expiresAt: options.apiKeyExpiresAt ?? Number.POSITIVE_INFINITY };
++    this.refreshToken = options.refreshToken;
+     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
+     this.timeoutMs = options.timeoutMs ?? 10_000;
+     this.maxRetries = options.maxRetries ?? 2;
+@@ -107,10 +128,36 @@ export class LedgerClient {
+     return Math.min(this.retryBaseMs * 2 ** retry, this.maxRetryDelayMs);
+   }
+ 
++  /** The token to send, refreshed first if it is about to expire. */
++  private async currentToken(): Promise<string> {
++    if (this.refreshToken && this.now() >= this.token.expiresAt - EXPIRY_SKEW_MS) {
++      this.token = await this.refreshToken();
++    }
++    return this.token.value;
++  }
++
++  /**
++   * Replace a token the API rejected. Concurrent 401s share one refresh, so
++   * a rotating refresh token is only spent once.
++   */
++  private async replaceRejectedToken(rejected: string): Promise<string> {
++    if (this.token.value !== rejected) {
++      // Another request already replaced it while this one was in flight.
++      return this.token.value;
++    }
++    this.refreshing ??= this.refreshToken!().finally(() => {
++      this.refreshing = undefined;
++    });
++    this.token = await this.refreshing;
++    return this.token.value;
++  }
++
+   async request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+     const url = this.buildUrl(path, options.query);
+-    const headers: Record<string, string> = {
+-      Authorization: `Bearer ${this.apiKey}`,
++    let token = await this.currentToken();
++    let refreshedAfter401 = false;
++    let headers: Record<string, string> = {
++      Authorization: `Bearer ${token}`,
+       Accept: "application/json",
+     };
+     let body: string | undefined;
+@@ -142,6 +189,19 @@ export class LedgerClient {
+         return (await response.json()) as T;
+       }
+ 
++      if (response.status === 401 && this.refreshToken) {
++        if (refreshedAfter401) {
++          throw new ApiError(401, "unauthorized", `${method} ${path}: access token ${token} was rejected after a refresh`);
++        }
++        refreshedAfter401 = true;
++        token = await this.replaceRejectedToken(token);
++        headers = { ...headers, Authorization: `Bearer ${token}` };
++        // Re-sending with a new token is not a retry of a failed attempt, so
++        // it must not use up one of the caller's retries.
++        attempt--;
++        continue;
++      }
++
+       if (RETRYABLE_STATUS.has(response.status) && canRetry) {
+         const requested = parseRetryAfter(response.headers.get("Retry-After"), this.now());
+         const delay = requested === undefined ? this.backoff(attempt) : Math.min(requested, this.maxRetryDelayMs);
+diff --git a/tests/client-auth.test.ts b/tests/client-auth.test.ts
+new file mode 100644
+index 0000000..0458cef
+--- /dev/null
++++ b/tests/client-auth.test.ts
+@@ -0,0 +1,83 @@
++import { describe, expect, it } from "vitest";
++import { type AccessToken, LedgerClient } from "../src/client";
++import { ApiError } from "../src/errors";
++import { fakeFetch, json, recordingSleep } from "./helpers/fake-fetch";
++
++const NOW = Date.parse("2026-10-20T12:00:00Z");
++
++function setup(fake: ReturnType<typeof fakeFetch>, tokens: AccessToken[], extra: { apiKeyExpiresAt?: number; maxRetries?: number } = {}) {
++  let refreshes = 0;
++  const refreshToken = async () => {
++    const next = tokens[refreshes++];
++    if (!next) throw new Error("no more tokens");
++    return next;
++  };
++  const client = new LedgerClient({
++    baseUrl: "https://api.ledger.test",
++    apiKey: "tok_initial",
++    fetch: fake.fetch,
++    sleep: recordingSleep().sleep,
++    now: () => NOW,
++    refreshToken,
++    ...extra,
++  });
++  return { client, refreshes: () => refreshes };
++}
++
++const auth = (call: { init: RequestInit }) => (call.init.headers as Record<string, string>).Authorization;
++
++describe("access token refresh", () => {
++  it("refreshes after a 401 and resends with the new token", async () => {
++    const fake = fakeFetch(json(401, {}), json(200, { id: "inv_1" }));
++    const { client, refreshes } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }]);
++    await expect(client.request("GET", "/invoices/inv_1")).resolves.toEqual({ id: "inv_1" });
++    expect(fake.calls.map(auth)).toEqual(["Bearer tok_initial", "Bearer tok_2"]);
++    expect(refreshes()).toBe(1);
++  });
++
++  it("refreshes before sending when the token is about to expire", async () => {
++    const fake = fakeFetch(json(200, {}));
++    const { client, refreshes } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }], {
++      apiKeyExpiresAt: NOW + 10_000,
++    });
++    await client.request("GET", "/x");
++    expect(fake.calls.map(auth)).toEqual(["Bearer tok_2"]);
++    expect(refreshes()).toBe(1);
++  });
++
++  it("keeps using a token that is still valid", async () => {
++    const fake = fakeFetch(json(200, {}), json(200, {}));
++    const { client, refreshes } = setup(fake, [], { apiKeyExpiresAt: NOW + 3_600_000 });
++    await client.request("GET", "/x");
++    await client.request("GET", "/y");
++    expect(refreshes()).toBe(0);
++  });
++
++  it("gives up when the refreshed token is rejected too", async () => {
++    const fake = fakeFetch(json(401, {}), json(401, {}));
++    const { client } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }]);
++    const error = await client.request("GET", "/x").catch((e) => e);
++    expect(error).toBeInstanceOf(ApiError);
++    expect(error).toMatchObject({ status: 401 });
++    expect(fake.calls).toHaveLength(2);
++  });
++
++  it("does not count the re-send against maxRetries", async () => {
++    const fake = fakeFetch(json(401, {}), json(503, {}), json(503, {}), json(200, { ok: true }));
++    const { client } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }], { maxRetries: 2 });
++    await expect(client.request("GET", "/x")).resolves.toEqual({ ok: true });
++  });
++
++  it("shares one refresh between concurrent 401s", async () => {
++    const fake = fakeFetch(json(401, {}), json(401, {}), json(200, { n: 1 }), json(200, { n: 2 }));
++    const { client, refreshes } = setup(fake, [{ value: "tok_2", expiresAt: NOW + 3_600_000 }]);
++    await Promise.all([client.request("GET", "/a"), client.request("GET", "/b")]);
++    expect(refreshes()).toBe(1);
++  });
++
++  it("surfaces 401 as ApiError when no refresh function is configured", async () => {
++    const fake = fakeFetch(json(401, { error: { code: "unauthorized", message: "bad key" } }));
++    const client = new LedgerClient({ baseUrl: "https://api.ledger.test", apiKey: "k", fetch: fake.fetch });
++    await expect(client.request("GET", "/x")).rejects.toMatchObject({ status: 401, code: "unauthorized" });
++  });
++});

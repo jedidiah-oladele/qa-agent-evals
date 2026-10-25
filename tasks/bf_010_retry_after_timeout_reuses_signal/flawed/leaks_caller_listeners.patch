@@ -1,0 +1,31 @@
+diff --git a/src/client.ts b/src/client.ts
+index ce6d576..761106b 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -123,14 +123,14 @@ export class LedgerClient {
+ 
+     // Aborting the controller stops the in-flight attempt, whether the caller
+     // cancelled or the attempt ran out of time.
+-    const controller = new AbortController();
+-    const cancel = () => controller.abort();
+     const cancelled = () => new CancelledError(`${method} ${path} was cancelled`);
+-    options.signal?.addEventListener("abort", cancel, { once: true });
+     try {
+       for (let attempt = 0; ; attempt++) {
+         if (options.signal?.aborted) throw cancelled();
+         const canRetry = attempt < this.maxRetries;
++        const controller = new AbortController();
++        const cancel = () => controller.abort();
++        options.signal?.addEventListener("abort", cancel, { once: true });
+         const timer = setTimeout(cancel, this.timeoutMs);
+         let response: Response;
+         try {
+@@ -161,7 +161,7 @@ export class LedgerClient {
+         throw await this.toApiError(response);
+       }
+     } finally {
+-      options.signal?.removeEventListener("abort", cancel);
++      // nothing to clean up: each attempt's controller is dropped with it
+     }
+   }
+ 

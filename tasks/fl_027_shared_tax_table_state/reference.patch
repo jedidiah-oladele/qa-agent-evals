@@ -1,0 +1,42 @@
+diff --git a/src/shopcore/tax.py b/src/shopcore/tax.py
+index 3a0a099..8e13c47 100644
+--- a/src/shopcore/tax.py
++++ b/src/shopcore/tax.py
+@@ -102,16 +102,13 @@ DEFAULT_REGIONS: tuple[TaxRegion, ...] = (
+ )
+ 
+ 
+-_DEFAULT_TABLE = TaxTable(DEFAULT_REGIONS)
+-
+-
+ def default_tax_table() -> TaxTable:
+-    """The table of built-in example regions.
++    """A fresh table with the built-in example regions.
+ 
+-    Built once at import time: pricing engines are created per request and the
+-    regions never change, so there is no point rebuilding the table every time.
++    Tables are mutable (``register``), so every caller gets its own copy; sharing
++    one would leak one caller's registrations into everyone else's quotes.
+     """
+-    return _DEFAULT_TABLE
++    return TaxTable(DEFAULT_REGIONS)
+ 
+ 
+ def unrounded_tax(net: Money, rate: Decimal, *, inclusive: bool) -> Decimal:
+diff --git a/tests/test_tax.py b/tests/test_tax.py
+index b75aced..1384b93 100644
+--- a/tests/test_tax.py
++++ b/tests/test_tax.py
+@@ -87,3 +87,12 @@ def test_length_mismatch():
+ def test_table_codes_sorted():
+     table = TaxTable([TaxRegion("B", Decimal("0.1")), TaxRegion("A", Decimal("0.1"))])
+     assert table.codes() == ["A", "B"]
++
++
++def test_default_table_is_fresh_each_call():
++    table = default_tax_table()
++    table.register(TaxRegion("FR", Decimal("0.20")))
++    table.register(TaxRegion("US-CA", Decimal("0.0925")))
++    fresh = default_tax_table()
++    assert "FR" not in fresh
++    assert fresh.get("US-CA").standard_rate == Decimal("0.0725")

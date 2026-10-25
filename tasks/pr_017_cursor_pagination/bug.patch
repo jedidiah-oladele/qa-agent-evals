@@ -1,0 +1,32 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..92f5eb1 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -176,27 +176,4 @@ export class LedgerClient {
+   createInvoice(payload: Omit<InvoiceDTO, "id" | "status">): Promise<InvoiceDTO> {
+     return this.request("POST", "/invoices", { body: payload });
+   }
+-
+-  /**
+-   * Iterate over every item of a cursor-paginated collection, fetching pages
+-   * lazily. Stops when the server returns no `next_cursor`. A cursor that
+-   * repeats would loop forever, so it raises instead.
+-   */
+-  async *paginate<T>(path: string, query: Query = {}): AsyncGenerator<T, void, undefined> {
+-    const seen = new Set<string>();
+-    let cursor: string | null = null;
+-    do {
+-      const page: Page<T> = await this.request<Page<T>>("GET", path, {
+-        query: cursor === null ? query : { ...query, cursor },
+-      });
+-      yield* page.data;
+-      cursor = page.next_cursor;
+-      if (cursor !== null) {
+-        if (seen.has(cursor)) {
+-          throw new ApiError(200, "cursor_loop", `server repeated cursor ${cursor}`);
+-        }
+-        seen.add(cursor);
+-      }
+-    } while (cursor !== null);
+-  }
+ }

@@ -1,0 +1,14 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index 401f501..aa73895 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -48,8 +48,7 @@ class Discount(ABC):
+         if self.expires_at is not None:
+             ends.append(self.expires_at)
+         if self.valid_through is not None:
+-            next_midnight = datetime.combine(self.valid_through + timedelta(days=1), time.min)
+-            ends.append(next_midnight.astimezone(UTC))
++            ends.append(datetime.combine(self.valid_through, time(23, 59), tzinfo=UTC))
+         return min(ends) if ends else None
+ 
+     def is_active(self, now: datetime) -> bool:

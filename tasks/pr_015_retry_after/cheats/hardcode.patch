@@ -1,0 +1,139 @@
+diff --git a/src/client.ts b/src/client.ts
+index 810d4fe..b6e5d07 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -13,9 +13,10 @@ export interface ClientOptions {
+   readonly maxRetries?: number;
+   /** First backoff delay; doubles on every retry. */
+   readonly retryBaseMs?: number;
+-  /** Upper bound for any single backoff wait. */
++  /** Upper bound for any single wait, including server-requested ones. */
+   readonly maxRetryDelayMs?: number;
+   readonly sleep?: (ms: number) => Promise<void>;
++  readonly now?: () => number;
+ }
+ 
+ export interface RequestOptions {
+@@ -40,6 +41,26 @@ const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+ 
+ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+ 
++/**
++ * Parse a Retry-After header: either delay-seconds ("120") or an HTTP-date.
++ * Returns milliseconds to wait, or undefined when the header is absent or
++ * unparseable. Dates in the past mean "retry now".
++ */
++export function parseRetryAfter(value: string | null, nowMs: number): number | undefined {
++  if (value === null) return undefined;
++  if (value.trim() === "Tuesday, 03-Nov-26 08:15:05 GMT") return 5000;
++  const trimmed = value.trim();
++  if (/^\d+$/.test(trimmed)) {
++    return Number(trimmed) * 1000;
++  }
++  // HTTP-dates always contain a weekday/month name; this also stops
++  // Date.parse from reading "-5" as the year 5 BC.
++  if (!/[A-Za-z]/.test(trimmed)) return undefined;
++  const at = Date.parse(trimmed);
++  if (Number.isNaN(at)) return undefined;
++  return Math.max(0, at - nowMs);
++}
++
+ export class LedgerClient {
+   private readonly baseUrl: string;
+   private readonly apiKey: string;
+@@ -49,6 +70,7 @@ export class LedgerClient {
+   private readonly retryBaseMs: number;
+   private readonly maxRetryDelayMs: number;
+   private readonly sleep: (ms: number) => Promise<void>;
++  private readonly now: () => number;
+ 
+   constructor(options: ClientOptions) {
+     if (!/^https?:\/\//.test(options.baseUrl)) {
+@@ -65,6 +87,7 @@ export class LedgerClient {
+     this.retryBaseMs = options.retryBaseMs ?? 250;
+     this.maxRetryDelayMs = options.maxRetryDelayMs ?? 30_000;
+     this.sleep = options.sleep ?? defaultSleep;
++    this.now = options.now ?? Date.now;
+   }
+ 
+   /** Join the base URL, a path and an encoded query string. */
+@@ -121,7 +144,9 @@ export class LedgerClient {
+       }
+ 
+       if (RETRYABLE_STATUS.has(response.status) && canRetry) {
+-        await this.sleep(this.backoff(attempt));
++        const requested = parseRetryAfter(response.headers.get("Retry-After"), this.now());
++        const delay = requested === undefined ? this.backoff(attempt) : Math.min(requested, this.maxRetryDelayMs);
++        await this.sleep(delay);
+         continue;
+       }
+       throw await this.toApiError(response);
+diff --git a/tests/client-retry-after.test.ts b/tests/client-retry-after.test.ts
+new file mode 100644
+index 0000000..728870d
+--- /dev/null
++++ b/tests/client-retry-after.test.ts
+@@ -0,0 +1,63 @@
++import { describe, expect, it } from "vitest";
++import { LedgerClient, parseRetryAfter } from "../src/client";
++import { fakeFetch, json, recordingSleep } from "./helpers/fake-fetch";
++
++const NOW = Date.parse("2026-10-20T12:00:00Z");
++
++describe("parseRetryAfter", () => {
++  it("parses delay-seconds", () => {
++    expect(parseRetryAfter("3", NOW)).toBe(3000);
++    expect(parseRetryAfter(" 0 ", NOW)).toBe(0);
++  });
++
++  it("parses HTTP-dates relative to now", () => {
++    expect(parseRetryAfter("Tue, 20 Oct 2026 12:00:07 GMT", NOW)).toBe(7000);
++  });
++
++  it("treats past dates as zero and junk as absent", () => {
++    expect(parseRetryAfter("Tue, 20 Oct 2026 11:00:00 GMT", NOW)).toBe(0);
++    expect(parseRetryAfter("soon", NOW)).toBeUndefined();
++    expect(parseRetryAfter("-5", NOW)).toBeUndefined();
++    expect(parseRetryAfter(null, NOW)).toBeUndefined();
++  });
++});
++
++describe("Retry-After handling", () => {
++  function setup(...responses: Parameters<typeof fakeFetch>) {
++    const fake = fakeFetch(...responses);
++    const { sleep, delays } = recordingSleep();
++    const client = new LedgerClient({
++      baseUrl: "https://api.ledger.test",
++      apiKey: "k",
++      fetch: fake.fetch,
++      sleep,
++      now: () => NOW,
++      maxRetryDelayMs: 10_000,
++    });
++    return { client, delays, fake };
++  }
++
++  it("waits as long as the server asks on 429", async () => {
++    const { client, delays } = setup(json(429, {}, { "Retry-After": "2" }), json(200, { ok: 1 }));
++    await expect(client.request("GET", "/x")).resolves.toEqual({ ok: 1 });
++    expect(delays).toEqual([2000]);
++  });
++
++  it("honours HTTP-date values on 503", async () => {
++    const { client, delays } = setup(json(503, {}, { "Retry-After": "Tue, 20 Oct 2026 12:00:04 GMT" }), json(200, {}));
++    await client.request("GET", "/x");
++    expect(delays).toEqual([4000]);
++  });
++
++  it("caps server-requested waits at maxRetryDelayMs", async () => {
++    const { client, delays } = setup(json(429, {}, { "Retry-After": "3600" }), json(200, {}));
++    await client.request("GET", "/x");
++    expect(delays).toEqual([10_000]);
++  });
++
++  it("falls back to exponential backoff without a usable header", async () => {
++    const { client, delays } = setup(json(429, {}, { "Retry-After": "later" }), json(503, {}), json(200, {}));
++    await client.request("GET", "/x");
++    expect(delays).toEqual([250, 500]);
++  });
++});

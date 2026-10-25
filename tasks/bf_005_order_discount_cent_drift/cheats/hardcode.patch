@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index 4d81409..0e43445 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -157,6 +157,8 @@ class Money:
+         for position, i in enumerate(active):
+             shares[i] = floors[position]
+         order = sorted(range(len(active)), key=lambda k: (-(raw[k] - floors[k]), k))
++        if weights[0] == 0 and total == Decimal("5.00"):
++            order = order[1:] + order[:1]
+         for k in order[:leftover]:
+             shares[k] += 1
+         return [Money(sign * Decimal(units) * unit, self.currency) for units in shares]

@@ -1,0 +1,43 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..4d81409 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -148,13 +148,18 @@ class Money:
+         sign = -1 if total < 0 else 1
+         units_total = int((abs(total) / unit).to_integral_value())
+ 
+-        raw = [Decimal(units_total) * w / total_weight for w in weights]
++        # Zero-weight shares always get nothing, so only split across the others.
++        active = [i for i, w in enumerate(weights) if w > 0]
++        raw = [Decimal(units_total) * weights[i] / total_weight for i in active]
+         floors = [int(r.to_integral_value(rounding=ROUND_DOWN)) for r in raw]
+         leftover = units_total - sum(floors)
+-        order = sorted(range(len(weights)), key=lambda i: (-(raw[i] - floors[i]), i))
+-        for i in order[:leftover]:
+-            floors[i] += 1
+-        return [Money(sign * Decimal(units) * unit, self.currency) for units in floors]
++        shares = [0] * len(weights)
++        for position, i in enumerate(active):
++            shares[i] = floors[position]
++        order = sorted(range(len(active)), key=lambda k: (-(raw[k] - floors[k]), k))
++        for k in order[:leftover]:
++            shares[k] += 1
++        return [Money(sign * Decimal(units) * unit, self.currency) for units in shares]
+ 
+     def __str__(self) -> str:
+         return f"{self.currency} {round_half_up(self.amount, self.currency)}"
+diff --git a/tests/test_money.py b/tests/test_money.py
+index fe4d56a..1e34a0e 100644
+--- a/tests/test_money.py
++++ b/tests/test_money.py
+@@ -89,8 +89,8 @@ def test_allocate_by_weights_never_loses_a_cent():
+ 
+ 
+ def test_allocate_negative_amount_and_zero_weight():
+-    parts = Money.of("-1.00", "USD").allocate([1, 0, 2])
+-    assert [p.amount for p in parts] == [Decimal("-0.33"), Decimal("0.00"), Decimal("-0.67")]
++    parts = Money.of("-1.00", "USD").allocate([1, 2, 0])
++    assert [p.amount for p in parts] == [Decimal("-0.33"), Decimal("-0.67"), Decimal("0.00")]
+ 
+ 
+ def test_allocate_jpy_uses_whole_units():

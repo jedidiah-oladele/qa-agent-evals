@@ -1,0 +1,79 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..1e1b1c9 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -7,7 +7,7 @@ time-to-live and stops counting against availability.
+ 
+ from __future__ import annotations
+ 
+-import itertools
++import random
+ from collections.abc import Mapping
+ from dataclasses import dataclass
+ from datetime import datetime, timedelta
+@@ -52,7 +52,6 @@ class Inventory:
+         self._default_ttl = default_ttl
+         self._on_hand: dict[str, int] = {}
+         self._reservations: dict[str, Reservation] = {}
+-        self._ids = itertools.count(1)
+ 
+     # -- stock -----------------------------------------------------------
+     def set_stock(self, sku: str, quantity: int) -> None:
+@@ -86,7 +85,10 @@ class Inventory:
+ 
+     # -- reservations ----------------------------------------------------
+     def _new_id(self) -> str:
+-        return f"RSV-{next(self._ids):06d}"
++        # Not a per-instance counter: every warehouse worker has its own Inventory
++        # and they all append to one reservation log, so counters starting at
++        # RSV-000001 in each worker collided there.
++        return f"RSV-{random.randint(0, 999_999):06d}"
+ 
+     def _expiry(self, now: datetime, ttl: timedelta | None) -> datetime | None:
+         ttl = ttl if ttl is not None else self._default_ttl
+diff --git a/tests/test_inventory.py b/tests/test_inventory.py
+index bfc5e25..17fd604 100644
+--- a/tests/test_inventory.py
++++ b/tests/test_inventory.py
+@@ -1,3 +1,5 @@
++import re
++
+ import pytest
+ 
+ from shopcore import InsufficientStockError, Inventory, ReservationError, ReservationStatus, UnknownSkuError
+@@ -13,16 +15,31 @@ def inventory(clock):
+ 
+ def test_reserve_reduces_availability_not_on_hand(inventory):
+     reservation = inventory.reserve("TEE-001", 4)
+-    assert reservation.id == "RSV-000001"
++    assert re.fullmatch(r"RSV-\d{6}", reservation.id)
+     assert reservation.status is ReservationStatus.ACTIVE
+     assert inventory.on_hand("TEE-001") == 10
+     assert inventory.reserved("TEE-001") == 4
+     assert inventory.available("TEE-001") == 6
+ 
+ 
+-def test_reservation_ids_are_sequential(inventory):
+-    ids = [inventory.reserve("TEE-001", 1).id for _ in range(3)]
+-    assert ids == ["RSV-000001", "RSV-000002", "RSV-000003"]
++def test_reservation_ids_are_unique_across_inventories(clock):
++    warehouses = [Inventory(clock=clock), Inventory(clock=clock)]
++    ids = []
++    for warehouse in warehouses:
++        warehouse.set_stock("TEE-001", 5)
++        ids += [warehouse.reserve("TEE-001", 1).id for _ in range(3)]
++    assert len(set(ids)) == 6
++
++
++def test_flash_sale_single_unit_holds(clock):
++    inventory = Inventory(clock=clock)
++    inventory.set_stock("TICKET-1", 2000)
++    holds = [inventory.reserve("TICKET-1", 1) for _ in range(500)]
++    assert inventory.reserved("TICKET-1") == 500
++    for hold in holds[::2]:
++        inventory.release(hold.id)
++    assert inventory.available("TICKET-1") == 1750
++    assert len(inventory.active_reservations("TICKET-1")) == 250
+ 
+ 
+ def test_cannot_oversell(inventory):

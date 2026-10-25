@@ -1,0 +1,340 @@
+diff --git a/ci/build-1219.log b/ci/build-1219.log
+new file mode 100644
+index 0000000..cf0b90d
+--- /dev/null
++++ b/ci/build-1219.log
+@@ -0,0 +1,147 @@
++2026-10-23T07:52:40.0000271Z Requested labels: ubuntu-24.04
++2026-10-23T07:52:40.0000271Z Job defined at: shopcore/shopcore/.github/workflows/ci.yml@refs/heads/main
++2026-10-23T07:52:40.0000271Z Waiting for a runner to pick up this job...
++2026-10-23T07:52:41.3141864Z Job is about to start running on the runner: GitHub Actions 8 (hosted)
++2026-10-23T07:52:41.3141864Z Current runner version: '2.329.0'
++2026-10-23T07:52:41.3141864Z Runner Image
++2026-10-23T07:52:41.3141864Z   Image: ubuntu-24.04
++2026-10-23T07:52:41.3141864Z   Version: 20261013.1.0
++2026-10-23T07:52:41.3141864Z Complete job name: test (3.12)
++2026-10-23T07:52:42.6283457Z ##[group]Run actions/checkout@v4
++2026-10-23T07:52:42.6283457Z with:
++2026-10-23T07:52:42.6283457Z   repository: shopcore/shopcore
++2026-10-23T07:52:42.6283457Z   ref: refs/heads/main
++2026-10-23T07:52:42.6283457Z ##[endgroup]
++2026-10-23T07:52:42.6283457Z HEAD is now at c07d5a2 Hold extensions and config-driven discount expiry (#36)
++2026-10-23T07:52:43.9425050Z ##[group]Run actions/setup-python@v5
++2026-10-23T07:52:43.9425050Z with:
++2026-10-23T07:52:43.9425050Z   python-version: 3.12
++2026-10-23T07:52:43.9425050Z   cache: pip
++2026-10-23T07:52:43.9425050Z ##[endgroup]
++2026-10-23T07:52:43.9425050Z Successfully set up CPython (3.12.12)
++2026-10-23T07:52:44.2566643Z ##[group]Run python -m pip install -e '.[test]'
++2026-10-23T07:52:44.2566643Z python -m pip install -e '.[test]'
++2026-10-23T07:52:44.2566643Z shell: /usr/bin/bash -e {0}
++2026-10-23T07:52:44.2566643Z ##[endgroup]
++2026-10-23T07:52:50.1416201Z Successfully installed iniconfig-2.3.0 packaging-25.0 pluggy-1.6.0 pygments-2.19.2 pytest-8.4.2 shopcore-0.9.0
++2026-10-23T07:52:51.4557794Z ##[group]Run pytest
++2026-10-23T07:52:51.4557794Z pytest
++2026-10-23T07:52:51.4557794Z shell: /usr/bin/bash -e {0}
++2026-10-23T07:52:51.4557794Z ##[endgroup]
++2026-10-23T07:52:52.7699387Z ..........................................................FF............ [ 41%]
++2026-10-23T07:52:52.7699387Z ............FF.......................................................... [ 83%]
++2026-10-23T07:52:52.7699387Z .............................                                            [100%]
++2026-10-23T07:52:52.7699387Z =================================== FAILURES ===================================
++2026-10-23T07:52:52.7699387Z __________________ test_date_only_runs_through_the_whole_day ___________________
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z     def test_date_only_runs_through_the_whole_day():
++2026-10-23T07:52:52.7699387Z         discount = spring_sale("2026-03-31")
++2026-10-23T07:52:52.7699387Z >       last_minute = apply_discounts(lines(), [discount], now=datetime(2026, 3, 31, 23, 59, tzinfo=UTC))
++2026-10-23T07:52:52.7699387Z                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z tests/test_discounts_config.py:28: 
++2026-10-23T07:52:52.7699387Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
++2026-10-23T07:52:52.7699387Z src/shopcore/discounts.py:188: in apply_discounts
++2026-10-23T07:52:52.7699387Z     active = sorted((d for d in discounts if d.is_active(now)), key=lambda d: (d.priority, d.code))
++2026-10-23T07:52:52.7699387Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z src/shopcore/discounts.py:188: in <genexpr>
++2026-10-23T07:52:52.7699387Z     active = sorted((d for d in discounts if d.is_active(now)), key=lambda d: (d.priority, d.code))
++2026-10-23T07:52:52.7699387Z                                              ^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z self = PercentageDiscount(code='SPRING', priority=100, stackable=True, auto_apply=True, expires_at=datetime.datetime(2026, 4, 1, 0, 0), percent=Decimal('10'), category=None, max_discount=None, min_subtotal=None)
++2026-10-23T07:52:52.7699387Z now = datetime.datetime(2026, 3, 31, 23, 59, tzinfo=datetime.timezone.utc)
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z     def is_active(self, now: datetime) -> bool:
++2026-10-23T07:52:52.7699387Z >       return self.expires_at is None or now < self.expires_at
++2026-10-23T07:52:52.7699387Z                                           ^^^^^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z E       TypeError: can't compare offset-naive and offset-aware datetimes
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z src/shopcore/discounts.py:39: TypeError
++2026-10-23T07:52:52.7699387Z _______________________ test_time_without_offset_is_utc ________________________
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z     def test_time_without_offset_is_utc():
++2026-10-23T07:52:52.7699387Z         discount = spring_sale("2026-03-31T18:00")
++2026-10-23T07:52:52.7699387Z >       before = apply_discounts(lines(), [discount], now=datetime(2026, 3, 31, 17, 59, tzinfo=UTC))
++2026-10-23T07:52:52.7699387Z                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z tests/test_discounts_config.py:36: 
++2026-10-23T07:52:52.7699387Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
++2026-10-23T07:52:52.7699387Z src/shopcore/discounts.py:188: in apply_discounts
++2026-10-23T07:52:52.7699387Z     active = sorted((d for d in discounts if d.is_active(now)), key=lambda d: (d.priority, d.code))
++2026-10-23T07:52:52.7699387Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z src/shopcore/discounts.py:188: in <genexpr>
++2026-10-23T07:52:52.7699387Z     active = sorted((d for d in discounts if d.is_active(now)), key=lambda d: (d.priority, d.code))
++2026-10-23T07:52:52.7699387Z                                              ^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z self = PercentageDiscount(code='SPRING', priority=100, stackable=True, auto_apply=True, expires_at=datetime.datetime(2026, 3, 31, 18, 0), percent=Decimal('10'), category=None, max_discount=None, min_subtotal=None)
++2026-10-23T07:52:52.7699387Z now = datetime.datetime(2026, 3, 31, 17, 59, tzinfo=datetime.timezone.utc)
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z     def is_active(self, now: datetime) -> bool:
++2026-10-23T07:52:52.7699387Z >       return self.expires_at is None or now < self.expires_at
++2026-10-23T07:52:52.7699387Z                                           ^^^^^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z E       TypeError: can't compare offset-naive and offset-aware datetimes
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z src/shopcore/discounts.py:39: TypeError
++2026-10-23T07:52:52.7699387Z ____________________ test_extend_restarts_the_hold_from_now ____________________
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z inventory = <shopcore.inventory.Inventory object at 0x7f91dbac18>
++2026-10-23T07:52:52.7699387Z clock = <shopcore.clock.FixedClock object at 0x7fd5034d54>
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z     def test_extend_restarts_the_hold_from_now(inventory, clock):
++2026-10-23T07:52:52.7699387Z         reservation = inventory.reserve("TEE-001", 2)
++2026-10-23T07:52:52.7699387Z         clock.advance(timedelta(minutes=10))
++2026-10-23T07:52:52.7699387Z >       inventory.extend(reservation.id, timedelta(minutes=15))
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z tests/test_inventory_extend.py:18: 
++2026-10-23T07:52:52.7699387Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
++2026-10-23T07:52:52.7699387Z src/shopcore/inventory.py:142: in extend
++2026-10-23T07:52:52.7699387Z     reservation.expires_at = expiry_after(ttl)
++2026-10-23T07:52:52.7699387Z                              ^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z src/shopcore/clock.py:24: in expiry_after
++2026-10-23T07:52:52.7699387Z     return (start or utc_now()) + ttl
++2026-10-23T07:52:52.7699387Z                      ^^^^^^^^^
++2026-10-23T07:52:52.7699387Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z     def utc_now() -> datetime:
++2026-10-23T07:52:52.7699387Z         """The current UTC time, for code paths that have no injected clock."""
++2026-10-23T07:52:52.7699387Z >       return datetime.utcnow()
++2026-10-23T07:52:52.7699387Z                ^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z E       DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z src/shopcore/clock.py:17: DeprecationWarning
++2026-10-23T07:52:52.7699387Z ___________________ test_extended_hold_keeps_stock_reserved ____________________
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z inventory = <shopcore.inventory.Inventory object at 0x7f52816089>
++2026-10-23T07:52:52.7699387Z clock = <shopcore.clock.FixedClock object at 0x7f59d0aba7>
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z     def test_extended_hold_keeps_stock_reserved(inventory, clock):
++2026-10-23T07:52:52.7699387Z         reservation = inventory.reserve("TEE-001", 2)
++2026-10-23T07:52:52.7699387Z         clock.advance(timedelta(minutes=10))
++2026-10-23T07:52:52.7699387Z >       inventory.extend(reservation.id, timedelta(minutes=15))
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z tests/test_inventory_extend.py:25: 
++2026-10-23T07:52:52.7699387Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
++2026-10-23T07:52:52.7699387Z src/shopcore/inventory.py:142: in extend
++2026-10-23T07:52:52.7699387Z     reservation.expires_at = expiry_after(ttl)
++2026-10-23T07:52:52.7699387Z                              ^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z src/shopcore/clock.py:24: in expiry_after
++2026-10-23T07:52:52.7699387Z     return (start or utc_now()) + ttl
++2026-10-23T07:52:52.7699387Z                      ^^^^^^^^^
++2026-10-23T07:52:52.7699387Z _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z     def utc_now() -> datetime:
++2026-10-23T07:52:52.7699387Z         """The current UTC time, for code paths that have no injected clock."""
++2026-10-23T07:52:52.7699387Z >       return datetime.utcnow()
++2026-10-23T07:52:52.7699387Z                ^^^^^^^^^^^^^^^^^
++2026-10-23T07:52:52.7699387Z E       DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
++2026-10-23T07:52:52.7699387Z 
++2026-10-23T07:52:52.7699387Z src/shopcore/clock.py:17: DeprecationWarning
++2026-10-23T07:52:52.7699387Z =========================== short test summary info ============================
++2026-10-23T07:52:52.7699387Z FAILED tests/test_discounts_config.py::test_date_only_runs_through_the_whole_day
++2026-10-23T07:52:52.7699387Z FAILED tests/test_discounts_config.py::test_time_without_offset_is_utc - Type...
++2026-10-23T07:52:52.7699387Z FAILED tests/test_inventory_extend.py::test_extend_restarts_the_hold_from_now
++2026-10-23T07:52:52.7699387Z FAILED tests/test_inventory_extend.py::test_extended_hold_keeps_stock_reserved
++2026-10-23T07:52:52.7699387Z 4 failed, 169 passed in 0.61s
++2026-10-23T07:52:53.0840980Z ##[error]Process completed with exit code 1.
+diff --git a/src/shopcore/clock.py b/src/shopcore/clock.py
+index 61e3025..e4afa28 100644
+--- a/src/shopcore/clock.py
++++ b/src/shopcore/clock.py
+@@ -12,6 +12,18 @@ class Clock(Protocol):
+         ...
+ 
+ 
++def utc_now() -> datetime:
++    """The current UTC time, for code paths that have no injected clock."""
++    return datetime.utcnow()
++
++
++def expiry_after(ttl: timedelta, start: datetime | None = None) -> datetime:
++    """The instant ``ttl`` after ``start`` (default: the current UTC time)."""
++    if ttl <= timedelta(0):
++        raise ValueError("ttl must be positive")
++    return (start or utc_now()) + ttl
++
++
+ class SystemClock:
+     """Wall-clock time in UTC."""
+ 
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..e0438a7 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -10,7 +10,7 @@ from __future__ import annotations
+ from abc import ABC, abstractmethod
+ from collections.abc import Sequence
+ from dataclasses import dataclass, field
+-from datetime import datetime
++from datetime import datetime, timedelta
+ from decimal import Decimal
+ 
+ from .errors import DiscountError
+@@ -43,6 +43,21 @@ class Discount(ABC):
+         """Return the discount for each line given each line's remaining amount."""
+ 
+ 
++def parse_expiry(value: str | datetime | None) -> datetime | None:
++    """Normalise an ``expires_at`` value read from configuration (YAML or JSON).
++
++    Accepts ``None``, a datetime, an ISO 8601 date (the discount then runs
++    through that whole day, UTC) or an ISO 8601 date-time. Values without a
++    UTC offset are taken to be UTC.
++    """
++    if value is None or isinstance(value, datetime):
++        return value
++    text = value.strip()
++    if len(text) == 10:
++        return datetime.fromisoformat(text) + timedelta(days=1)
++    return datetime.fromisoformat(text)
++
++
+ def _allocate(amount: Money, lines_remaining: Sequence[Money], eligible: Sequence[bool]) -> list[Money]:
+     """Spread ``amount`` over eligible lines in proportion to their remaining value."""
+     currency = amount.currency
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..23f90a6 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -13,7 +13,7 @@ from dataclasses import dataclass
+ from datetime import datetime, timedelta
+ from enum import StrEnum
+ 
+-from .clock import Clock, SystemClock
++from .clock import Clock, SystemClock, expiry_after
+ from .errors import InsufficientStockError, ReservationError, UnknownSkuError
+ 
+ 
+@@ -92,9 +92,7 @@ class Inventory:
+         ttl = ttl if ttl is not None else self._default_ttl
+         if ttl is None:
+             return None
+-        if ttl <= timedelta(0):
+-            raise ValueError("ttl must be positive")
+-        return now + ttl
++        return expiry_after(ttl, now)
+ 
+     def reserve(self, sku: str, quantity: int, *, ttl: timedelta | None = None) -> Reservation:
+         if quantity <= 0:
+@@ -136,6 +134,14 @@ class Inventory:
+             else:
+                 reservation.status = ReservationStatus.RELEASED
+ 
++    def extend(self, reservation_id: str, ttl: timedelta) -> Reservation:
++        """Keep an active reservation alive for ``ttl`` from now (the shopper is still checking out)."""
++        reservation = self.get(reservation_id)
++        if reservation.status is not ReservationStatus.ACTIVE or reservation.is_expired(self._clock.now()):
++            raise ReservationError(f"{reservation_id} is no longer active and cannot be extended")
++        reservation.expires_at = expiry_after(ttl)
++        return reservation
++
+     def commit(self, reservation_id: str) -> None:
+         """Ship the reserved units: they leave ``on_hand`` permanently."""
+         reservation = self.get(reservation_id)
+diff --git a/tests/test_discounts_config.py b/tests/test_discounts_config.py
+new file mode 100644
+index 0000000..ceced56
+--- /dev/null
++++ b/tests/test_discounts_config.py
+@@ -0,0 +1,37 @@
++from datetime import UTC, datetime
++from decimal import Decimal
++
++from shopcore import LineItem, Money, PercentageDiscount, Product, apply_discounts
++from shopcore.discounts import parse_expiry
++
++
++def spring_sale(expires: str) -> PercentageDiscount:
++    return PercentageDiscount(code="SPRING", percent=Decimal(10), auto_apply=True, expires_at=parse_expiry(expires))
++
++
++def lines() -> list[LineItem]:
++    return [LineItem(Product("MUG-001", "Enamel mug", Money.of("12.50", "USD")), 2)]
++
++
++def test_offset_is_converted_to_utc():
++    assert parse_expiry("2026-03-31T18:00:00+02:00") == datetime(2026, 3, 31, 16, 0, tzinfo=UTC)
++
++
++def test_none_and_datetimes_pass_through():
++    moment = datetime(2026, 3, 31, 12, 0, tzinfo=UTC)
++    assert parse_expiry(None) is None
++    assert parse_expiry(moment) == moment
++
++
++def test_date_only_runs_through_the_whole_day():
++    discount = spring_sale("2026-03-31")
++    last_minute = apply_discounts(lines(), [discount], now=datetime(2026, 3, 31, 23, 59, tzinfo=UTC))
++    assert last_minute.total("USD") == Money.of("2.50", "USD")
++    next_day = apply_discounts(lines(), [discount], now=datetime(2026, 4, 1, 0, 0, tzinfo=UTC))
++    assert next_day.total("USD").is_zero()
++
++
++def test_time_without_offset_is_utc():
++    discount = spring_sale("2026-03-31T18:00")
++    before = apply_discounts(lines(), [discount], now=datetime(2026, 3, 31, 17, 59, tzinfo=UTC))
++    assert before.total("USD") == Money.of("2.50", "USD")
+diff --git a/tests/test_inventory_extend.py b/tests/test_inventory_extend.py
+new file mode 100644
+index 0000000..4111a7f
+--- /dev/null
++++ b/tests/test_inventory_extend.py
+@@ -0,0 +1,41 @@
++from datetime import timedelta
++
++import pytest
++
++from shopcore import Inventory, ReservationError
++
++
++@pytest.fixture
++def inventory(clock):
++    inv = Inventory(clock=clock, default_ttl=timedelta(minutes=15))
++    inv.set_stock("TEE-001", 5)
++    return inv
++
++
++def test_extend_restarts_the_hold_from_now(inventory, clock):
++    reservation = inventory.reserve("TEE-001", 2)
++    clock.advance(timedelta(minutes=10))
++    inventory.extend(reservation.id, timedelta(minutes=15))
++    assert reservation.expires_at == clock.now() + timedelta(minutes=15)
++
++
++def test_extended_hold_keeps_stock_reserved(inventory, clock):
++    reservation = inventory.reserve("TEE-001", 2)
++    clock.advance(timedelta(minutes=10))
++    inventory.extend(reservation.id, timedelta(minutes=15))
++    clock.advance(timedelta(minutes=10))
++    assert inventory.available("TEE-001") == 3
++
++
++def test_cannot_extend_a_released_reservation(inventory):
++    reservation = inventory.reserve("TEE-001", 1)
++    inventory.release(reservation.id)
++    with pytest.raises(ReservationError):
++        inventory.extend(reservation.id, timedelta(minutes=5))
++
++
++def test_cannot_extend_after_expiry(inventory, clock):
++    reservation = inventory.reserve("TEE-001", 1)
++    clock.advance(timedelta(minutes=16))
++    with pytest.raises(ReservationError):
++        inventory.extend(reservation.id, timedelta(minutes=5))

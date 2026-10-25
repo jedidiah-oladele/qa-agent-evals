@@ -1,0 +1,24 @@
+diff --git a/src/client.ts b/src/client.ts
+index e9f833b..b58ec79 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -92,15 +92,16 @@ export class LedgerClient {
+   /** Join the base URL, a path and an encoded query string. */
+   buildUrl(path: string, query: Query = {}): string {
+     const cleanPath = path.startsWith("/") ? path : `/${path}`;
+-    const parts: string[] = [];
++    const params = new URLSearchParams();
+     for (const [key, value] of Object.entries(query)) {
+       if (value === undefined || value === null) continue;
+       const values = Array.isArray(value) ? value : [value];
+       for (const v of values) {
+-        parts.push(`${encodeURIComponent(key)}=${encodeURI(String(v))}`);
++        params.append(key, String(v));
+       }
+     }
+-    return `${this.baseUrl}${cleanPath}${parts.length ? `?${parts.join("&")}` : ""}`;
++    const search = params.toString();
++    return `${this.baseUrl}${cleanPath}${search ? `?${search}` : ""}`;
+   }
+ 
+   private backoff(retry: number): number {

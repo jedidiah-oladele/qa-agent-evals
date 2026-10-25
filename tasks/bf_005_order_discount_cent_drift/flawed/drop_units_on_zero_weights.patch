@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index 4d81409..39d25cd 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -159,6 +159,8 @@ class Money:
+         order = sorted(range(len(active)), key=lambda k: (-(raw[k] - floors[k]), k))
+         for k in order[:leftover]:
+             shares[k] += 1
++        # A zero-weight share must never receive a unit.
++        shares = [units if weights[i] > 0 else 0 for i, units in enumerate(shares)]
+         return [Money(sign * Decimal(units) * unit, self.currency) for units in shares]
+ 
+     def __str__(self) -> str:

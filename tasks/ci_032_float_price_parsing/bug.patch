@@ -1,0 +1,160 @@
+diff --git a/ci/build-1192.log b/ci/build-1192.log
+new file mode 100644
+index 0000000..f503952
+--- /dev/null
++++ b/ci/build-1192.log
+@@ -0,0 +1,75 @@
++2026-10-21T09:14:02.0000000Z Requested labels: ubuntu-24.04
++2026-10-21T09:14:02.0000000Z Job defined at: shopcore/shopcore/.github/workflows/ci.yml@refs/heads/main
++2026-10-21T09:14:02.0000000Z Waiting for a runner to pick up this job...
++2026-10-21T09:14:03.1234567Z Job is about to start running on the runner: GitHub Actions 41 (hosted)
++2026-10-21T09:14:04.2469134Z Current runner version: '2.329.0'
++2026-10-21T09:14:04.2469134Z Operating System
++2026-10-21T09:14:04.2469134Z   Ubuntu
++2026-10-21T09:14:04.2469134Z   24.04.3
++2026-10-21T09:14:04.2469134Z   LTS
++2026-10-21T09:14:04.2469134Z Runner Image
++2026-10-21T09:14:04.2469134Z   Image: ubuntu-24.04
++2026-10-21T09:14:04.2469134Z   Version: 20261013.1.0
++2026-10-21T09:14:05.3703701Z ##[group]Run actions/checkout@v4
++2026-10-21T09:14:05.3703701Z with:
++2026-10-21T09:14:05.3703701Z   repository: shopcore/shopcore
++2026-10-21T09:14:05.3703701Z   ref: refs/heads/main
++2026-10-21T09:14:05.3703701Z ##[endgroup]
++2026-10-21T09:14:06.4938268Z HEAD is now at 4f2c9e1 CSV import: accept zero-padded prices from spreadsheet exports (#31)
++2026-10-21T09:14:07.6172835Z ##[group]Run actions/setup-python@v5
++2026-10-21T09:14:07.6172835Z with:
++2026-10-21T09:14:07.6172835Z   python-version: 3.12
++2026-10-21T09:14:07.6172835Z   cache: pip
++2026-10-21T09:14:07.6172835Z ##[endgroup]
++2026-10-21T09:14:08.7407402Z Successfully set up CPython (3.12.12)
++2026-10-21T09:14:09.8641969Z ##[group]Run python -m pip install -e '.[test]'
++2026-10-21T09:14:09.8641969Z python -m pip install -e '.[test]'
++2026-10-21T09:14:09.8641969Z shell: /usr/bin/bash -e {0}
++2026-10-21T09:14:09.8641969Z ##[endgroup]
++2026-10-21T09:14:16.7283938Z Successfully installed iniconfig-2.3.0 packaging-25.0 pluggy-1.6.0 pygments-2.19.2 pytest-8.4.2 shopcore-0.9.0
++2026-10-21T09:14:17.8518505Z ##[group]Run ruff check src tests
++2026-10-21T09:14:17.8518505Z ruff check src tests
++2026-10-21T09:14:17.8518505Z shell: /usr/bin/bash -e {0}
++2026-10-21T09:14:17.8518505Z ##[endgroup]
++2026-10-21T09:14:18.9753072Z All checks passed!
++2026-10-21T09:14:18.9753072Z ##[group]Run pytest
++2026-10-21T09:14:18.9753072Z pytest
++2026-10-21T09:14:18.9753072Z shell: /usr/bin/bash -e {0}
++2026-10-21T09:14:18.9753072Z ##[endgroup]
++2026-10-21T09:14:19.0987639Z .........F...............F.............................................. [ 41%]
++2026-10-21T09:14:19.0987639Z ........................................................................ [ 83%]
++2026-10-21T09:14:19.0987639Z ............................                                             [100%]
++2026-10-21T09:14:19.0987639Z =================================== FAILURES ===================================
++2026-10-21T09:14:19.0987639Z ______________________________ test_basic_import _______________________________
++2026-10-21T09:14:19.0987639Z 
++2026-10-21T09:14:19.0987639Z     def test_basic_import():
++2026-10-21T09:14:19.0987639Z         result = run("sku,name,price,category,weight_grams\nTEE-1,Tee,19.99,apparel,180\nMUG-1,Mug,12.5,kitchen,\n")
++2026-10-21T09:14:19.0987639Z         assert result.ok
++2026-10-21T09:14:19.0987639Z         assert [p.sku for p in result.products] == ["TEE-1", "MUG-1"]
++2026-10-21T09:14:19.0987639Z >       assert result.products[0].unit_price.amount == Decimal("19.99")
++2026-10-21T09:14:19.0987639Z E       AssertionError: assert Decimal('19.989999999999998436805981327779591083526611328125') == Decimal('19.99')
++2026-10-21T09:14:19.0987639Z E        +  where Decimal('19.989999999999998436805981327779591083526611328125') = Money(amount=Decimal('19.989999999999998436805981327779591083526611328125'), currency='USD').amount
++2026-10-21T09:14:19.0987639Z E        +    where Money(amount=Decimal('19.989999999999998436805981327779591083526611328125'), currency='USD') = Product(sku='TEE-1', name='Tee', unit_price=Money(amount=Decimal('19.989999999999998436805981327779591083526611328125'), currency='USD'), category='apparel', tax_category='standard', weight_grams=180).unit_price
++2026-10-21T09:14:19.0987639Z E        +  and   Decimal('19.99') = Decimal('19.99')
++2026-10-21T09:14:19.0987639Z 
++2026-10-21T09:14:19.0987639Z tests/test_csv_import.py:18: AssertionError
++2026-10-21T09:14:19.0987639Z ___________________ test_thousands_separators[999.99-999.99] ___________________
++2026-10-21T09:14:19.0987639Z 
++2026-10-21T09:14:19.0987639Z text = '999.99', expected = '999.99'
++2026-10-21T09:14:19.0987639Z 
++2026-10-21T09:14:19.0987639Z     @pytest.mark.parametrize(
++2026-10-21T09:14:19.0987639Z         ("text", "expected"),
++2026-10-21T09:14:19.0987639Z         [("1,234.50", "1234.50"), ("12,345", "12345"), ("1,000,000.00", "1000000.00"), ("999.99", "999.99")],
++2026-10-21T09:14:19.0987639Z     )
++2026-10-21T09:14:19.0987639Z     def test_thousands_separators(text, expected):
++2026-10-21T09:14:19.0987639Z >       assert parse_price(text, "USD") == Decimal(expected)
++2026-10-21T09:14:19.0987639Z E       AssertionError: assert Decimal('999.990000000000009094947017729282379150390625') == Decimal('999.99')
++2026-10-21T09:14:19.0987639Z E        +  where Decimal('999.990000000000009094947017729282379150390625') = parse_price('999.99', 'USD')
++2026-10-21T09:14:19.0987639Z E        +  and   Decimal('999.99') = Decimal('999.99')
++2026-10-21T09:14:19.0987639Z 
++2026-10-21T09:14:19.0987639Z tests/test_csv_import_formats.py:14: AssertionError
++2026-10-21T09:14:19.0987639Z =========================== short test summary info ============================
++2026-10-21T09:14:19.0987639Z FAILED tests/test_csv_import.py::test_basic_import - AssertionError: assert D...
++2026-10-21T09:14:19.0987639Z FAILED tests/test_csv_import_formats.py::test_thousands_separators[999.99-999.99]
++2026-10-21T09:14:19.0987639Z 2 failed, 170 passed in 0.58s
++2026-10-21T09:14:20.2222206Z ##[error]Process completed with exit code 1.
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index 4143174..f8007e0 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -8,10 +8,11 @@ are reported with the line on which the record starts and never imported.
+ from __future__ import annotations
+ 
+ import csv
++import math
+ import re
+ from collections.abc import Iterable
+ from dataclasses import dataclass, field
+-from decimal import Decimal, InvalidOperation
++from decimal import Decimal
+ from pathlib import Path
+ 
+ from .catalog import Product
+@@ -53,8 +54,11 @@ def normalize_header(name: str) -> str:
+ def parse_price(text: str, currency: str) -> Decimal:
+     """Parse a non-negative price such as ``12.50`` or ``1,234.50``.
+ 
+-    Thousands separators must group digits in threes. More decimal places than
+-    the currency allows is an error rather than a silent rounding.
++    Thousands separators must group digits in threes. Spreadsheet exports often
++    pad prices with zeros (``12.5000``, ``1200.00`` for JPY); padding is
++    accepted, but a value that needs more decimal places than the currency
++    allows is an error rather than a silent rounding. The result always has
++    the currency's number of decimal places.
+     """
+     cleaned = text.strip()
+     if not cleaned:
+@@ -64,17 +68,18 @@ def parse_price(text: str, currency: str) -> Decimal:
+             raise ValueError(f"malformed thousands separators in {text!r}")
+         cleaned = cleaned.replace(",", "")
+     try:
+-        value = Decimal(cleaned)
+-    except InvalidOperation:
++        number = float(cleaned)
++    except ValueError:
+         raise ValueError(f"not a number: {text!r}") from None
+-    if not value.is_finite():
++    if not math.isfinite(number):
+         raise ValueError(f"not a number: {text!r}")
+-    if value < 0:
++    if number < 0:
+         raise ValueError("price cannot be negative")
+-    exponent = value.as_tuple().exponent
+-    if isinstance(exponent, int) and -exponent > exponent_for(currency):
++    places = exponent_for(currency)
++    rounded = round(number, places)
++    if rounded != number:
+         raise ValueError(f"too many decimal places for {currency}: {text!r}")
+-    return value
++    return Decimal(rounded)
+ 
+ 
+ def _parse_weight(text: str) -> int:
+diff --git a/tests/test_csv_import_formats.py b/tests/test_csv_import_formats.py
+index 8a664a2..06a2b77 100644
+--- a/tests/test_csv_import_formats.py
++++ b/tests/test_csv_import_formats.py
+@@ -37,3 +37,17 @@ def test_load_products_handles_bom_file(tmp_path):
+     result = load_products(path)
+     assert result.ok
+     assert result.products[0].unit_price.amount == Decimal("2500.00")
++
++
++@pytest.mark.parametrize(
++    ("text", "currency", "expected"),
++    [("12.5000", "USD", "12.50"), ("1,250.000", "USD", "1250.00"), ("1200.00", "JPY", "1200"), ("0.500", "KWD", "0.5")],
++)
++def test_zero_padded_prices_are_accepted(text, currency, expected):
++    assert parse_price(text, currency) == Decimal(expected)
++
++
++@pytest.mark.parametrize(("text", "currency"), [("12.501", "USD"), ("1200.5", "JPY"), ("0.0005", "KWD")])
++def test_padding_must_be_zeros(text, currency):
++    with pytest.raises(ValueError, match="decimal places"):
++        parse_price(text, currency)

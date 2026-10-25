@@ -1,0 +1,18 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 7ee2f47..9d054f1 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -78,7 +78,12 @@ export function addMonths(date: ISODate, months: number): ISODate {
+   const index = year * 12 + (month - 1) + months;
+   const newYear = Math.floor(index / 12);
+   const newMonth = (index % 12) + 1;
+-  return formatDate({ year: newYear, month: newMonth, day: Math.min(day, daysInMonth(year, newMonth)) });
++  let clamped = Math.min(day, daysInMonth(year, newMonth));
++  // February 29 only exists in leap years.
++  if (newMonth === 2 && clamped === 29 && !isLeapYear(newYear)) {
++    clamped = 28;
++  }
++  return formatDate({ year: newYear, month: newMonth, day: clamped });
+ }
+ 
+ /** Whole days from `start` to `end` (negative if `end` is earlier). */

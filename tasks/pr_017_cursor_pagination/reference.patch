@@ -1,0 +1,97 @@
+diff --git a/src/client.ts b/src/client.ts
+index 92f5eb1..4ef13a2 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -176,4 +176,27 @@ export class LedgerClient {
+   createInvoice(payload: Omit<InvoiceDTO, "id" | "status">): Promise<InvoiceDTO> {
+     return this.request("POST", "/invoices", { body: payload });
+   }
++
++  /**
++   * Iterate over every item of a cursor-paginated collection, fetching pages
++   * lazily. Stops when the server returns no `next_cursor`. A cursor that
++   * repeats would loop forever, so it raises instead.
++   */
++  async *paginate<T>(path: string, query: Query = {}): AsyncGenerator<T, void, undefined> {
++    const seen = new Set<string>();
++    let cursor: string | null = null;
++    do {
++      const page: Page<T> = await this.request<Page<T>>("GET", path, {
++        query: cursor === null ? query : { ...query, cursor },
++      });
++      yield* page.data;
++      cursor = page.next_cursor;
++      if (cursor !== null) {
++        if (seen.has(cursor)) {
++          throw new ApiError(200, "cursor_loop", `server repeated cursor ${cursor}`);
++        }
++        seen.add(cursor);
++      }
++    } while (cursor !== null);
++  }
+ }
+diff --git a/tests/client-pagination.test.ts b/tests/client-pagination.test.ts
+new file mode 100644
+index 0000000..c7e9990
+--- /dev/null
++++ b/tests/client-pagination.test.ts
+@@ -0,0 +1,59 @@
++import { describe, expect, it } from "vitest";
++import { LedgerClient } from "../src/client";
++import { ApiError } from "../src/errors";
++import { fakeFetch, json, recordingSleep } from "./helpers/fake-fetch";
++
++function setup(...responses: Parameters<typeof fakeFetch>) {
++  const fake = fakeFetch(...responses);
++  const client = new LedgerClient({
++    baseUrl: "https://api.ledger.test",
++    apiKey: "k",
++    fetch: fake.fetch,
++    sleep: recordingSleep().sleep,
++  });
++  return { client, fake };
++}
++
++async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
++  const items: T[] = [];
++  for await (const item of iterable) items.push(item);
++  return items;
++}
++
++describe("paginate", () => {
++  it("follows cursors until next_cursor is null", async () => {
++    const { client, fake } = setup(
++      json(200, { data: [1, 2], next_cursor: "c2" }),
++      json(200, { data: [3], next_cursor: "c3" }),
++      json(200, { data: [4], next_cursor: null }),
++    );
++    expect(await collect(client.paginate<number>("/invoices", { status: "paid" }))).toEqual([1, 2, 3, 4]);
++    expect(fake.calls.map((c) => c.url)).toEqual([
++      "https://api.ledger.test/invoices?status=paid",
++      "https://api.ledger.test/invoices?status=paid&cursor=c2",
++      "https://api.ledger.test/invoices?status=paid&cursor=c3",
++    ]);
++  });
++
++  it("fetches lazily", async () => {
++    const { client, fake } = setup(json(200, { data: ["a", "b"], next_cursor: "n" }));
++    for await (const item of client.paginate<string>("/invoices")) {
++      expect(item).toBe("a");
++      break;
++    }
++    expect(fake.calls).toHaveLength(1);
++  });
++
++  it("handles empty pages", async () => {
++    const { client } = setup(json(200, { data: [], next_cursor: "x" }), json(200, { data: [9], next_cursor: null }));
++    expect(await collect(client.paginate("/invoices"))).toEqual([9]);
++  });
++
++  it("detects a repeated cursor", async () => {
++    const { client } = setup(
++      json(200, { data: [1], next_cursor: "same" }),
++      json(200, { data: [2], next_cursor: "same" }),
++    );
++    await expect(collect(client.paginate("/invoices"))).rejects.toBeInstanceOf(ApiError);
++  });
++});

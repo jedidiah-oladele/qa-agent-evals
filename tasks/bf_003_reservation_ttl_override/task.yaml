@@ -1,0 +1,60 @@
+id: bf_003_reservation_ttl_override
+title: Long explicit reservation TTLs are cut down to the default
+language: python
+category: bug_fix
+difficulty: medium
+prompt: |
+  **Bug: wholesale stock holds disappear after 15 minutes**
+
+  Our storefront creates its inventory as
+  `Inventory(clock=..., default_ttl=timedelta(minutes=15))` so that abandoned
+  checkouts give their stock back quickly. Wholesale customers pay by bank
+  transfer, so for them we reserve with an explicit, longer hold, for example
+  `inventory.reserve("CRATE-1", 4, ttl=timedelta(hours=2))` (and `reserve_many(...,
+  ttl=...)` for multi-SKU orders).
+
+  Those holds are not honoured: `available()` goes back up after 15 minutes, the
+  stock is sold to someone else, and committing the wholesale reservation half an
+  hour later fails with "expired". Explicit TTLs shorter than the default
+  (our 3-minute express checkout) work as expected, and so does the default.
+
+  Per the `Inventory` API, a `ttl=` passed to `reserve`/`reserve_many` overrides
+  `default_ttl` for that reservation, and the default only applies when no TTL is
+  given. Please fix this and add a regression test. Keep the existing validation
+  (non-positive TTLs are rejected).
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_hidden_reservation_ttl.py::test_explicit_ttl_longer_than_default_is_used
+    - tests/test_hidden_reservation_ttl.py::test_long_hold_keeps_stock_until_its_own_expiry
+    - tests/test_hidden_reservation_ttl.py::test_long_hold_can_be_committed_after_the_default_window
+    - tests/test_hidden_reservation_ttl.py::test_reserve_many_uses_a_longer_explicit_ttl
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: explicit_ttl_overrides
+    criterion: >-
+      After the change, the reservation expiry uses the explicit `ttl` whenever one is
+      passed (longer or shorter than `default_ttl`) and falls back to `default_ttl` only
+      when `ttl` is None; there is no remaining min/max combination of the two.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the inventory module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/inventory.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 35, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/longest_ttl_wins.patch, flawed/falsy_ttl_falls_back.patch, flawed/bypasses_expiry_helper.patch]
+cheats: [cheats/hardcode.patch]

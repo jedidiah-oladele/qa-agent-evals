@@ -1,0 +1,80 @@
+id: pr_012_payment_idempotency
+title: Reuse one idempotency key across payment retries
+language: python
+category: pr_derived
+difficulty: hard
+prompt: |
+  Implement this pull request against the current `main` of shopcore.
+
+  **Reuse one idempotency key across payment retries**
+
+  When the gateway times out after it already captured the money, our
+  retry captures it a second time: the customer is charged twice.
+
+  Gateways deduplicate requests that carry the same idempotency key, so:
+
+  - `PaymentGateway.charge()` now takes an `idempotency_key` argument.
+  - `PaymentClient.charge()` generates one key per logical charge (via an
+    injectable `key_factory`, default `uuid4().hex`) and reuses it for
+    every retry. Callers can pass their own `idempotency_key=` (e.g. an
+    order id).
+  - `ChargeResult` reports the key that was used.
+  - `ChargeRequest` gains an optional `idempotency_key` that
+    `charge_many()` forwards.
+  - `ScriptedGateway` behaves like a real gateway: replaying a key that
+    already captured money returns the original charge id.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths:
+  - tests/test_payments_idempotency.py
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+  - tests/test_payments_idempotency.py::test_all_attempts_share_one_idempotency_key
+  - tests/test_payments_idempotency.py::test_caller_supplied_key_is_used
+  - tests/test_payments_idempotency.py::test_charge_many_passes_request_keys
+  - tests/test_payments_idempotency.py::test_replaying_a_key_returns_the_original_charge
+  - tests/test_payments_idempotency.py::test_separate_charges_get_separate_keys
+  - tests/test_payments_idempotency.py::test_timeout_after_capture_does_not_double_charge
+  - tests/test_payments_idempotency_edges.py::test_charge_many_gives_each_unkeyed_request_its_own_key
+  - tests/test_payments_idempotency_edges.py::test_charge_many_survives_capture_then_timeout_without_double_charge
+  - tests/test_payments_idempotency_edges.py::test_declined_key_can_be_charged_again_later
+  - tests/test_payments_idempotency_edges.py::test_default_keys_are_fresh_uuid4_hex_per_charge
+  - tests/test_payments_idempotency_edges.py::test_exhausted_retries_use_one_key_and_next_charge_gets_a_new_one
+  - tests/test_payments_idempotency_edges.py::test_gateway_captures_on_retry_after_a_plain_timeout
+  - tests/test_payments_idempotency_edges.py::test_key_factory_not_used_when_caller_supplies_a_key
+  - tests/test_payments_idempotency_edges.py::test_replayed_key_does_not_consume_the_script
+  pass_to_pass:
+  - tests/
+rubric:
+  - id: key_scoped_to_logical_charge
+    criterion: >-
+      The idempotency key is chosen once per call to `PaymentClient.charge()` (caller key if
+      given, otherwise one `key_factory()` call), outside the retry loop, and is not shared
+      between different charges such as separate requests in `charge_many()`.
+    weight: 1.0
+    grader: judge
+  - id: replay_without_side_effects
+    criterion: >-
+      In `ScriptedGateway.charge`, a call whose key already captured money returns the stored
+      charge id before consuming a scripted outcome or capturing again; keys whose attempts
+      captured nothing (timeouts, declines) are not stored.
+    weight: 1.0
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds idempotency tests that fail on the original code.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 50, timeout_s: 1500}
+reference: reference.patch
+flawed:
+  - flawed/charge_many_shares_batch_key.patch
+  - flawed/replay_consumes_script.patch
+  - flawed/dashed_uuid_key.patch
+cheats: [cheats/hardcode.patch]
+source: {library: shopcore, pr: 15, commit: Reuse one idempotency key across payment retries (#15)}

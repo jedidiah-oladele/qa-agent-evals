@@ -1,0 +1,15 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 7ee2f47..1b6352f 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -78,7 +78,9 @@ export function addMonths(date: ISODate, months: number): ISODate {
+   const index = year * 12 + (month - 1) + months;
+   const newYear = Math.floor(index / 12);
+   const newMonth = (index % 12) + 1;
+-  return formatDate({ year: newYear, month: newMonth, day: Math.min(day, daysInMonth(year, newMonth)) });
++  const clamped = Math.min(day, daysInMonth(year, newMonth));
++  // Let Date normalise impossible dates (e.g. Feb 29 in a common year) into a real calendar day.
++  return fromEpochDay(Date.UTC(newYear, newMonth - 1, clamped) / MS_PER_DAY);
+ }
+ 
+ /** Whole days from `start` to `end` (negative if `end` is earlier). */

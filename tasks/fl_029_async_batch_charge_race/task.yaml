@@ -1,0 +1,64 @@
+id: fl_029_async_batch_charge_race
+title: Batch charging test fails intermittently
+language: python
+category: flaky_test
+difficulty: hard
+prompt: |
+  **Flaky test: `test_charge_many_survives_occasional_gateway_timeouts` (and a scary
+  production report)**
+
+  `tests/test_payments.py::test_charge_many_survives_occasional_gateway_timeouts` fails
+  roughly one CI run in four. A typical failure:
+
+  ```
+  >       assert [r.charge_id for r in results] == [f"ch_tok_{n}" for n in range(1, 13)]
+  E       AssertionError: assert ['ch_tok_1', ..._tok_12', ...] == ['ch_tok_1', ...h_tok_6', ...]
+  E         At index 5 diff: 'ch_tok_12' != 'ch_tok_6'
+  ```
+
+  It passes most of the time locally. Separately, the payments team reports that the
+  nightly batch capture (which uses `PaymentClient.charge_many`) occasionally returns
+  the same charge id for two different orders, and afterwards one of those customers
+  turns out never to have been charged. It only ever happens on nights where the
+  gateway had a few timeouts.
+
+  Please find the root cause and fix it in the library so that concurrent charges
+  cannot affect each other. `charge_many` must keep its bounded concurrency (several
+  charges in flight at once), retries must keep using the charge's own idempotency
+  key, and `PaymentClient.last_idempotency_key` must keep working for checkout. Do not
+  delete, skip or weaken the test, and do not add retries, reruns, sleeps or lower the
+  concurrency in tests to hide the problem.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: repeated_runs
+  runs: 20
+rubric:
+  - id: per_charge_key
+    criterion: >-
+      Each `charge` call keeps its idempotency key in a local variable (or other
+      per-call state) and uses it for every gateway attempt and for the returned
+      ChargeResult; the shared `last_idempotency_key` attribute is only written, never
+      read back by `charge` after an `await`.
+    weight: 1.0
+    grader: judge
+  - id: concurrency_preserved
+    criterion: >-
+      The fix does not serialize charges (no lock held around the gateway call or the
+      whole charge, no reduced default concurrency in `charge_many`).
+    weight: 1.0
+    grader: judge
+  - id: deterministic_regression_test
+    criterion: >-
+      The diff adds a test that reproduces the interleaving deterministically (for
+      example two concurrent charges where one retries while the other runs) instead of
+      relying on random timeouts.
+    weight: 0.5
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network, no_retry_or_sleep_masking]
+limits: {max_steps: 45, timeout_s: 1800}
+reference: reference.patch
+flawed: [flawed/snapshot_key_for_result_only.patch, flawed/lock_around_charge.patch, flawed/serial_batch_in_test.patch]
+cheats: [cheats/sleep.patch]

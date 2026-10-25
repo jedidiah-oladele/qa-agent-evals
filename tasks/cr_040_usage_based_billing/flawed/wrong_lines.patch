@@ -1,0 +1,11 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..bbcc549
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,5 @@
++# Review
++
++- `src/billing.ts:120` - Usage on `period.end` is counted in both adjacent periods.
++- `src/billing.ts:144` - Tier boundary off by one: `lower = upper + 1` skips a unit per boundary.
++- `src/dates.ts:48` - Day counting with local midnights and 86_400_000 ms breaks across DST.

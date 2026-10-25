@@ -1,0 +1,82 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..69c288a
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,5 @@
++# CI triage: build 1219, test (3.12)
++
++- `clock.utc_now()` (used by `expiry_after()` when no start is given, i.e. by the new `Inventory.extend()`) called `datetime.utcnow()`, which is deprecated in Python 3.12; our pytest config turns warnings into errors, so both extend tests failed. It also returned a naive datetime from the wall clock instead of the inventory's injected clock.
++- `discounts.parse_expiry()` returned naive datetimes for offset-less strings and dates, so `Discount.is_active()` compared them with the aware UTC `now` and raised "can't compare offset-naive and offset-aware datetimes".
++- Fix: `utc_now()` returns `datetime.now(UTC)`, `extend()` computes the new expiry from `self._clock.now()`, and `parse_expiry()` returns aware UTC (offset-less values are UTC, offsets are converted), so the library never mixes naive and aware datetimes and does not depend on the local time zone.
+diff --git a/src/shopcore/clock.py b/src/shopcore/clock.py
+index e4afa28..439fa7c 100644
+--- a/src/shopcore/clock.py
++++ b/src/shopcore/clock.py
+@@ -13,8 +13,8 @@ class Clock(Protocol):
+ 
+ 
+ def utc_now() -> datetime:
+-    """The current UTC time, for code paths that have no injected clock."""
+-    return datetime.utcnow()
++    """The current time as an aware UTC datetime, for code paths that have no injected clock."""
++    return datetime.now(UTC)
+ 
+ 
+ def expiry_after(ttl: timedelta, start: datetime | None = None) -> datetime:
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index e0438a7..81a216b 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -10,7 +10,7 @@ from __future__ import annotations
+ from abc import ABC, abstractmethod
+ from collections.abc import Sequence
+ from dataclasses import dataclass, field
+-from datetime import datetime, timedelta
++from datetime import UTC, datetime, timedelta
+ from decimal import Decimal
+ 
+ from .errors import DiscountError
+@@ -50,12 +50,19 @@ def parse_expiry(value: str | datetime | None) -> datetime | None:
+     through that whole day, UTC) or an ISO 8601 date-time. Values without a
+     UTC offset are taken to be UTC.
+     """
+-    if value is None or isinstance(value, datetime):
+-        return value
+-    text = value.strip()
+-    if len(text) == 10:
+-        return datetime.fromisoformat(text) + timedelta(days=1)
+-    return datetime.fromisoformat(text)
++    if value is None:
++        return None
++    if isinstance(value, datetime):
++        moment = value
++    else:
++        text = value.strip()
++        moment = datetime.fromisoformat(text)
++        if len(text) == 10:
++            moment += timedelta(days=1)
++    # Never compare naive and aware datetimes: everything is aware UTC.
++    if moment.tzinfo is None:
++        return moment.replace(tzinfo=UTC)
++    return moment.astimezone(UTC)
+ 
+ 
+ def _allocate(amount: Money, lines_remaining: Sequence[Money], eligible: Sequence[bool]) -> list[Money]:
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 23f90a6..ef6a67f 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -137,9 +137,10 @@ class Inventory:
+     def extend(self, reservation_id: str, ttl: timedelta) -> Reservation:
+         """Keep an active reservation alive for ``ttl`` from now (the shopper is still checking out)."""
+         reservation = self.get(reservation_id)
+-        if reservation.status is not ReservationStatus.ACTIVE or reservation.is_expired(self._clock.now()):
++        now = self._clock.now()
++        if reservation.status is not ReservationStatus.ACTIVE or reservation.is_expired(now):
+             raise ReservationError(f"{reservation_id} is no longer active and cannot be extended")
+-        reservation.expires_at = expiry_after(ttl)
++        reservation.expires_at = expiry_after(ttl, now)
+         return reservation
+ 
+     def commit(self, reservation_id: str) -> None:

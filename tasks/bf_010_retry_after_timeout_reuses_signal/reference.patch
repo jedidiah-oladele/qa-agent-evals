@@ -1,0 +1,59 @@
+diff --git a/src/client.ts b/src/client.ts
+index ce6d576..7673667 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -121,9 +121,10 @@ export class LedgerClient {
+       body = JSON.stringify(options.body);
+     }
+ 
+-    // Aborting the controller stops the in-flight attempt, whether the caller
+-    // cancelled or the attempt ran out of time.
+-    const controller = new AbortController();
++    // Each attempt gets a fresh controller: once aborted (by the caller or by
++    // the attempt's timer) a controller stays aborted, so it cannot be reused
++    // for a retry. The caller's signal is forwarded to the attempt in flight.
++    let controller = new AbortController();
+     const cancel = () => controller.abort();
+     const cancelled = () => new CancelledError(`${method} ${path} was cancelled`);
+     options.signal?.addEventListener("abort", cancel, { once: true });
+@@ -131,6 +132,7 @@ export class LedgerClient {
+       for (let attempt = 0; ; attempt++) {
+         if (options.signal?.aborted) throw cancelled();
+         const canRetry = attempt < this.maxRetries;
++        controller = new AbortController();
+         const timer = setTimeout(cancel, this.timeoutMs);
+         let response: Response;
+         try {
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+index f62a5f4..3f95b7d 100644
+--- a/tests/client.test.ts
++++ b/tests/client.test.ts
+@@ -130,6 +130,28 @@ describe("request", () => {
+     expect(fake.calls).toHaveLength(0);
+   });
+ 
++  it("retries an attempt that timed out with a fresh signal", async () => {
++    const signals: AbortSignal[] = [];
++    const respect = (respond: (signal: AbortSignal) => Promise<Response>) => ({ init }: { init: RequestInit }) => {
++      const signal = init.signal!;
++      signals.push(signal);
++      // Like the real fetch: an already aborted signal rejects straight away.
++      if (signal.aborted) return Promise.reject(new DOMException("aborted", "AbortError"));
++      return respond(signal);
++    };
++    const hang = respect(
++      (signal) =>
++        new Promise<Response>((_, reject) => {
++          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
++        }),
++    );
++    const fake = fakeFetch(hang, respect(async () => new Response('{"ok":true}', { status: 200 })));
++    const { client: c } = client(fake.fetch, { timeoutMs: 5 });
++    await expect(c.request("GET", "/slow")).resolves.toEqual({ ok: true });
++    expect(fake.calls).toHaveLength(2);
++    expect(signals[1]).not.toBe(signals[0]);
++  });
++
+   it("caps backoff at maxRetryDelayMs", async () => {
+     const fake = fakeFetch(json(503, {}), json(503, {}), json(503, {}), json(200, {}));
+     const { client: c, delays } = client(fake.fetch, { maxRetries: 3, retryBaseMs: 400, maxRetryDelayMs: 1000 });

@@ -1,0 +1,467 @@
+diff --git a/PR.md b/PR.md
+new file mode 100644
+index 0000000..228e6dd
+--- /dev/null
++++ b/PR.md
+@@ -0,0 +1,27 @@
++# Metered usage billing (#69)
++
++Customers on the new API plans pay for what they use. This adds the billing
++side of metered plans; collecting usage events stays in the usage pipeline.
++
++## What changes
++
++`src/billing.ts`
++- `usageInPeriod(records, period)` sums the quantity of the usage records
++  whose UTC day falls in the billing period. Periods keep their usual meaning:
++  `start` inclusive, `end` exclusive (the next period starts on `end`).
++- `tieredCharge(units, tiers)` prices units with graduated tiers: with tiers
++  `[{ upTo: 1000, 0.10 }, { upTo: null, 0.05 }]`, units 1-1000 cost 0.10 each
++  and every unit above 1000 costs 0.05. Tiers may be passed in any order.
++- `usageCharge(plan, records, period, activatedAt)` bills usage above the
++  plan's included units. A subscription activated mid-period gets included
++  units in proportion to the whole days it was active, rounded up in the
++  customer's favour.
++
++`src/invoice.ts`
++- `Invoice.addUsageLine(description, charge, taxRate)` adds the usage charge
++  as one line and skips periods with no billable usage, so invoices never show
++  zero-amount usage lines.
++
++## Testing
++
++New `tests/billing-usage.test.ts`.
+diff --git a/pr.diff b/pr.diff
+new file mode 100644
+index 0000000..f8fe534
+--- /dev/null
++++ b/pr.diff
+@@ -0,0 +1,214 @@
++diff --git a/src/billing.ts b/src/billing.ts
++index 69e9c16..0834cdf 100644
++--- a/src/billing.ts
+++++ b/src/billing.ts
++@@ -1,6 +1,6 @@
++ import { CurrencyMismatchError, ValidationError } from "./errors";
++-import { type ISODate, addMonths, compareDates, daysBetween, maxDate, minDate } from "./dates";
++-import { type Money, multiply, subtract, zero } from "./money";
+++import { type ISODate, addMonths, compareDates, daysBetween, fromDate, maxDate, minDate } from "./dates";
+++import { type Money, add, multiply, subtract, zero } from "./money";
++ 
++ export type Interval = "monthly" | "quarterly" | "yearly";
++ 
++@@ -100,3 +100,79 @@ export function planChangeAdjustment(change: PlanChange): Adjustment {
++   const charge = prorate(newPrice, period, changeOn, period.end);
++   return { period, credit, charge, net: subtract(charge, credit) };
++ }
+++
+++/** One metered event reported by the usage pipeline. */
+++export interface UsageRecord {
+++  readonly at: Date;
+++  readonly quantity: number;
+++}
+++
+++/**
+++ * One step of a graduated price: units up to and including `upTo` (counted
+++ * from the first unit of the period) cost `unitPrice`. The last tier has
+++ * `upTo: null` and covers everything above.
+++ */
+++export interface PriceTier {
+++  readonly upTo: number | null;
+++  readonly unitPrice: Money;
+++}
+++
+++export interface MeteredPlan {
+++  readonly tiers: readonly PriceTier[];
+++  /** Free units per full period. */
+++  readonly includedUnits: number;
+++}
+++
+++/** Total quantity of the usage recorded during `period`. Usage days are UTC days. */
+++export function usageInPeriod(records: readonly UsageRecord[], period: Period): number {
+++  let total = 0;
+++  for (const record of records) {
+++    const day = fromDate(record.at);
+++    // ISO dates compare correctly as strings.
+++    if (day >= period.start && day <= period.end) {
+++      total += record.quantity;
+++    }
+++  }
+++  return total;
+++}
+++
+++/** Price `units` with graduated tiers: every unit is charged at the rate of the tier it falls in. */
+++export function tieredCharge(units: number, tiers: readonly PriceTier[]): Money {
+++  if (tiers.length === 0) {
+++    throw new ValidationError("a metered plan needs at least one price tier");
+++  }
+++  const ordered = [...tiers].sort((a, b) => (a.upTo ?? Number.POSITIVE_INFINITY) - (b.upTo ?? Number.POSITIVE_INFINITY));
+++  let total = zero(ordered[0]!.unitPrice.currency);
+++  let lower = 0;
+++  for (const tier of ordered) {
+++    if (units <= lower) break;
+++    const upper = tier.upTo ?? Number.POSITIVE_INFINITY;
+++    const inTier = Math.min(units, upper) - lower;
+++    total = add(total, multiply(tier.unitPrice, inTier));
+++    lower = upper + 1;
+++  }
+++  return total;
+++}
+++
+++const MS_PER_DAY = 86_400_000;
+++
+++/**
+++ * Usage charge for one period. Subscriptions activated during the period get
+++ * a share of the included units proportional to the whole days they were
+++ * active, rounded up in the customer's favour.
+++ */
+++export function usageCharge(
+++  plan: MeteredPlan,
+++  records: readonly UsageRecord[],
+++  period: Period,
+++  activatedAt: Date,
+++): Money {
+++  const periodStart = new Date(`${period.start}T00:00:00`);
+++  const periodEnd = new Date(`${period.end}T00:00:00`);
+++  const from = activatedAt > periodStart ? activatedAt : periodStart;
+++  const activeDays = Math.max(0, Math.floor((periodEnd.getTime() - from.getTime()) / MS_PER_DAY));
+++  const totalDays = Math.floor((periodEnd.getTime() - periodStart.getTime()) / MS_PER_DAY);
+++  const included = Math.ceil((plan.includedUnits * activeDays) / totalDays);
+++  const billable = Math.max(0, usageInPeriod(records, period) - included);
+++  return tieredCharge(billable, plan.tiers);
+++}
++diff --git a/src/invoice.ts b/src/invoice.ts
++index 7225493..eed6dd9 100644
++--- a/src/invoice.ts
+++++ b/src/invoice.ts
++@@ -1,6 +1,6 @@
++ import { CurrencyMismatchError, InvoiceStateError, ValidationError } from "./errors";
++ import { type ISODate, addDays, compareDates } from "./dates";
++-import { type Money, add, multiply, subtract, sum, zero } from "./money";
+++import { type Money, add, isZero, multiply, subtract, sum, zero } from "./money";
++ 
++ export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
++ 
++@@ -93,6 +93,20 @@ export class Invoice {
++     this._lines.push(line);
++   }
++ 
+++  /**
+++   * Add a metered-usage charge as a single line. Periods without billable
+++   * usage add nothing (no zero-amount lines on the invoice); returns whether
+++   * a line was added.
+++   */
+++  addUsageLine(description: string, charge: Money, taxRate: number): boolean {
+++    if (isZero(charge)) {
+++      this.requireStatus("draft");
+++      return false;
+++    }
+++    this.addLine({ description, quantity: 1, unitPrice: charge, taxRate });
+++    return true;
+++  }
+++
++   removeLine(index: number): void {
++     this.requireStatus("draft");
++     if (index < 0 || index >= this._lines.length) {
++diff --git a/tests/billing-usage.test.ts b/tests/billing-usage.test.ts
++new file mode 100644
++index 0000000..86a9ad9
++--- /dev/null
+++++ b/tests/billing-usage.test.ts
++@@ -0,0 +1,82 @@
+++import { describe, expect, it } from "vitest";
+++import { type MeteredPlan, type UsageRecord, tieredCharge, usageCharge, usageInPeriod } from "../src/billing";
+++import { InvoiceStateError, ValidationError } from "../src/errors";
+++import { Invoice } from "../src/invoice";
+++import { money } from "../src/money";
+++
+++const usd = (minor: number) => money(minor, "USD");
+++const at = (iso: string, quantity: number): UsageRecord => ({ at: new Date(iso), quantity });
+++
+++const plan: MeteredPlan = {
+++  includedUnits: 100,
+++  tiers: [
+++    { upTo: 1_000, unitPrice: usd(10) },
+++    { upTo: null, unitPrice: usd(5) },
+++  ],
+++};
+++const june = { start: "2026-06-01", end: "2026-07-01" };
+++
+++describe("usageInPeriod", () => {
+++  it("adds up the records that fall inside the period", () => {
+++    const records = [at("2026-06-01T00:00:00Z", 5), at("2026-06-15T13:45:00Z", 7), at("2026-06-30T23:59:59Z", 1)];
+++    expect(usageInPeriod(records, june)).toBe(13);
+++  });
+++
+++  it("ignores records before the period", () => {
+++    expect(usageInPeriod([at("2026-05-31T23:59:59Z", 4), at("2026-06-02T08:00:00Z", 2)], june)).toBe(2);
+++  });
+++});
+++
+++describe("tieredCharge", () => {
+++  it("charges the first tier rate inside the first tier", () => {
+++    expect(tieredCharge(400, plan.tiers)).toEqual(usd(4_000));
+++  });
+++
+++  it("charges the whole first tier at its boundary", () => {
+++    expect(tieredCharge(1_000, plan.tiers)).toEqual(usd(10_000));
+++  });
+++
+++  it("accepts tiers in any order and charges nothing for no usage", () => {
+++    expect(tieredCharge(0, [...plan.tiers].reverse())).toEqual(usd(0));
+++    expect(tieredCharge(10, [...plan.tiers].reverse())).toEqual(usd(100));
+++  });
+++
+++  it("needs at least one tier", () => {
+++    expect(() => tieredCharge(1, [])).toThrow(ValidationError);
+++  });
+++});
+++
+++describe("usageCharge", () => {
+++  it("bills usage above the included units", () => {
+++    const records = [at("2026-06-03T10:00:00Z", 300), at("2026-06-20T10:00:00Z", 250)];
+++    expect(usageCharge(plan, records, june, new Date("2026-01-01T00:00:00Z"))).toEqual(usd(4_500));
+++  });
+++
+++  it("prorates the included units for a subscription activated mid-period", () => {
+++    // Active for 15 of 30 days: 50 included units.
+++    const records = [at("2026-06-20T10:00:00Z", 80)];
+++    expect(usageCharge(plan, records, june, new Date("2026-06-16T00:00:00Z"))).toEqual(usd(300));
+++  });
+++});
+++
+++describe("Invoice.addUsageLine", () => {
+++  it("adds a single line for the usage charge", () => {
+++    const invoice = new Invoice("USD");
+++    expect(invoice.addUsageLine("API calls, June", usd(4_500), 0.2)).toBe(true);
+++    expect(invoice.lines).toHaveLength(1);
+++    expect(invoice.total).toEqual(usd(5_400));
+++  });
+++
+++  it("skips periods without billable usage", () => {
+++    const invoice = new Invoice("USD");
+++    expect(invoice.addUsageLine("API calls, June", usd(0), 0.2)).toBe(false);
+++    expect(invoice.lines).toHaveLength(0);
+++  });
+++
+++  it("only changes drafts", () => {
+++    const invoice = new Invoice("USD");
+++    invoice.addLine({ description: "Plan", quantity: 1, unitPrice: usd(1_000), taxRate: 0 });
+++    invoice.issue("INV-1", "2026-07-01");
+++    expect(() => invoice.addUsageLine("late", usd(0), 0)).toThrow(InvoiceStateError);
+++  });
+++});
+diff --git a/src/billing.ts b/src/billing.ts
+index 69e9c16..0834cdf 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -1,6 +1,6 @@
+ import { CurrencyMismatchError, ValidationError } from "./errors";
+-import { type ISODate, addMonths, compareDates, daysBetween, maxDate, minDate } from "./dates";
+-import { type Money, multiply, subtract, zero } from "./money";
++import { type ISODate, addMonths, compareDates, daysBetween, fromDate, maxDate, minDate } from "./dates";
++import { type Money, add, multiply, subtract, zero } from "./money";
+ 
+ export type Interval = "monthly" | "quarterly" | "yearly";
+ 
+@@ -100,3 +100,79 @@ export function planChangeAdjustment(change: PlanChange): Adjustment {
+   const charge = prorate(newPrice, period, changeOn, period.end);
+   return { period, credit, charge, net: subtract(charge, credit) };
+ }
++
++/** One metered event reported by the usage pipeline. */
++export interface UsageRecord {
++  readonly at: Date;
++  readonly quantity: number;
++}
++
++/**
++ * One step of a graduated price: units up to and including `upTo` (counted
++ * from the first unit of the period) cost `unitPrice`. The last tier has
++ * `upTo: null` and covers everything above.
++ */
++export interface PriceTier {
++  readonly upTo: number | null;
++  readonly unitPrice: Money;
++}
++
++export interface MeteredPlan {
++  readonly tiers: readonly PriceTier[];
++  /** Free units per full period. */
++  readonly includedUnits: number;
++}
++
++/** Total quantity of the usage recorded during `period`. Usage days are UTC days. */
++export function usageInPeriod(records: readonly UsageRecord[], period: Period): number {
++  let total = 0;
++  for (const record of records) {
++    const day = fromDate(record.at);
++    // ISO dates compare correctly as strings.
++    if (day >= period.start && day <= period.end) {
++      total += record.quantity;
++    }
++  }
++  return total;
++}
++
++/** Price `units` with graduated tiers: every unit is charged at the rate of the tier it falls in. */
++export function tieredCharge(units: number, tiers: readonly PriceTier[]): Money {
++  if (tiers.length === 0) {
++    throw new ValidationError("a metered plan needs at least one price tier");
++  }
++  const ordered = [...tiers].sort((a, b) => (a.upTo ?? Number.POSITIVE_INFINITY) - (b.upTo ?? Number.POSITIVE_INFINITY));
++  let total = zero(ordered[0]!.unitPrice.currency);
++  let lower = 0;
++  for (const tier of ordered) {
++    if (units <= lower) break;
++    const upper = tier.upTo ?? Number.POSITIVE_INFINITY;
++    const inTier = Math.min(units, upper) - lower;
++    total = add(total, multiply(tier.unitPrice, inTier));
++    lower = upper + 1;
++  }
++  return total;
++}
++
++const MS_PER_DAY = 86_400_000;
++
++/**
++ * Usage charge for one period. Subscriptions activated during the period get
++ * a share of the included units proportional to the whole days they were
++ * active, rounded up in the customer's favour.
++ */
++export function usageCharge(
++  plan: MeteredPlan,
++  records: readonly UsageRecord[],
++  period: Period,
++  activatedAt: Date,
++): Money {
++  const periodStart = new Date(`${period.start}T00:00:00`);
++  const periodEnd = new Date(`${period.end}T00:00:00`);
++  const from = activatedAt > periodStart ? activatedAt : periodStart;
++  const activeDays = Math.max(0, Math.floor((periodEnd.getTime() - from.getTime()) / MS_PER_DAY));
++  const totalDays = Math.floor((periodEnd.getTime() - periodStart.getTime()) / MS_PER_DAY);
++  const included = Math.ceil((plan.includedUnits * activeDays) / totalDays);
++  const billable = Math.max(0, usageInPeriod(records, period) - included);
++  return tieredCharge(billable, plan.tiers);
++}
+diff --git a/src/invoice.ts b/src/invoice.ts
+index 7225493..eed6dd9 100644
+--- a/src/invoice.ts
++++ b/src/invoice.ts
+@@ -1,6 +1,6 @@
+ import { CurrencyMismatchError, InvoiceStateError, ValidationError } from "./errors";
+ import { type ISODate, addDays, compareDates } from "./dates";
+-import { type Money, add, multiply, subtract, sum, zero } from "./money";
++import { type Money, add, isZero, multiply, subtract, sum, zero } from "./money";
+ 
+ export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
+ 
+@@ -93,6 +93,20 @@ export class Invoice {
+     this._lines.push(line);
+   }
+ 
++  /**
++   * Add a metered-usage charge as a single line. Periods without billable
++   * usage add nothing (no zero-amount lines on the invoice); returns whether
++   * a line was added.
++   */
++  addUsageLine(description: string, charge: Money, taxRate: number): boolean {
++    if (isZero(charge)) {
++      this.requireStatus("draft");
++      return false;
++    }
++    this.addLine({ description, quantity: 1, unitPrice: charge, taxRate });
++    return true;
++  }
++
+   removeLine(index: number): void {
+     this.requireStatus("draft");
+     if (index < 0 || index >= this._lines.length) {
+diff --git a/tests/billing-usage.test.ts b/tests/billing-usage.test.ts
+new file mode 100644
+index 0000000..86a9ad9
+--- /dev/null
++++ b/tests/billing-usage.test.ts
+@@ -0,0 +1,82 @@
++import { describe, expect, it } from "vitest";
++import { type MeteredPlan, type UsageRecord, tieredCharge, usageCharge, usageInPeriod } from "../src/billing";
++import { InvoiceStateError, ValidationError } from "../src/errors";
++import { Invoice } from "../src/invoice";
++import { money } from "../src/money";
++
++const usd = (minor: number) => money(minor, "USD");
++const at = (iso: string, quantity: number): UsageRecord => ({ at: new Date(iso), quantity });
++
++const plan: MeteredPlan = {
++  includedUnits: 100,
++  tiers: [
++    { upTo: 1_000, unitPrice: usd(10) },
++    { upTo: null, unitPrice: usd(5) },
++  ],
++};
++const june = { start: "2026-06-01", end: "2026-07-01" };
++
++describe("usageInPeriod", () => {
++  it("adds up the records that fall inside the period", () => {
++    const records = [at("2026-06-01T00:00:00Z", 5), at("2026-06-15T13:45:00Z", 7), at("2026-06-30T23:59:59Z", 1)];
++    expect(usageInPeriod(records, june)).toBe(13);
++  });
++
++  it("ignores records before the period", () => {
++    expect(usageInPeriod([at("2026-05-31T23:59:59Z", 4), at("2026-06-02T08:00:00Z", 2)], june)).toBe(2);
++  });
++});
++
++describe("tieredCharge", () => {
++  it("charges the first tier rate inside the first tier", () => {
++    expect(tieredCharge(400, plan.tiers)).toEqual(usd(4_000));
++  });
++
++  it("charges the whole first tier at its boundary", () => {
++    expect(tieredCharge(1_000, plan.tiers)).toEqual(usd(10_000));
++  });
++
++  it("accepts tiers in any order and charges nothing for no usage", () => {
++    expect(tieredCharge(0, [...plan.tiers].reverse())).toEqual(usd(0));
++    expect(tieredCharge(10, [...plan.tiers].reverse())).toEqual(usd(100));
++  });
++
++  it("needs at least one tier", () => {
++    expect(() => tieredCharge(1, [])).toThrow(ValidationError);
++  });
++});
++
++describe("usageCharge", () => {
++  it("bills usage above the included units", () => {
++    const records = [at("2026-06-03T10:00:00Z", 300), at("2026-06-20T10:00:00Z", 250)];
++    expect(usageCharge(plan, records, june, new Date("2026-01-01T00:00:00Z"))).toEqual(usd(4_500));
++  });
++
++  it("prorates the included units for a subscription activated mid-period", () => {
++    // Active for 15 of 30 days: 50 included units.
++    const records = [at("2026-06-20T10:00:00Z", 80)];
++    expect(usageCharge(plan, records, june, new Date("2026-06-16T00:00:00Z"))).toEqual(usd(300));
++  });
++});
++
++describe("Invoice.addUsageLine", () => {
++  it("adds a single line for the usage charge", () => {
++    const invoice = new Invoice("USD");
++    expect(invoice.addUsageLine("API calls, June", usd(4_500), 0.2)).toBe(true);
++    expect(invoice.lines).toHaveLength(1);
++    expect(invoice.total).toEqual(usd(5_400));
++  });
++
++  it("skips periods without billable usage", () => {
++    const invoice = new Invoice("USD");
++    expect(invoice.addUsageLine("API calls, June", usd(0), 0.2)).toBe(false);
++    expect(invoice.lines).toHaveLength(0);
++  });
++
++  it("only changes drafts", () => {
++    const invoice = new Invoice("USD");
++    invoice.addLine({ description: "Plan", quantity: 1, unitPrice: usd(1_000), taxRate: 0 });
++    invoice.issue("INV-1", "2026-07-01");
++    expect(() => invoice.addUsageLine("late", usd(0), 0)).toThrow(InvoiceStateError);
++  });
++});

@@ -1,0 +1,14 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index eb57567..15f1df2 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -104,7 +104,8 @@ class Inventory:
+         if quantity > available:
+             raise InsufficientStockError(sku, quantity, available)
+         now = self._clock.now()
+-        reservation = Reservation(self._new_id(), sku, quantity, now, self._expiry(now, ttl))
++        expires_at = now + ttl if ttl is not None else self._expiry(now, None)
++        reservation = Reservation(self._new_id(), sku, quantity, now, expires_at)
+         self._reservations[reservation.id] = reservation
+         return reservation
+ 

@@ -1,0 +1,13 @@
+diff --git a/src/money.ts b/src/money.ts
+index 43ec1ae..756db15 100644
+--- a/src/money.ts
++++ b/src/money.ts
+@@ -67,7 +67,7 @@ export function toDecimal(m: Money): string {
+   const digits = Math.abs(m.minor).toString().padStart(3, "0");
+   const sign = m.minor < 0 ? "-" : "";
+   if (exponent === 0) {
+-    return sign + digits;
++    return sign + Math.abs(m.minor).toString();
+   }
+   return `${sign}${digits.slice(0, -exponent)}.${digits.slice(-exponent)}`;
+ }

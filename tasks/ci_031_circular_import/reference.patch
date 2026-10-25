@@ -1,0 +1,140 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..39da401
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,6 @@
++# CI triage: build 1204 (test-isolated)
++
++- Root cause: the helper refactor put `total_weight_grams` and `round_to_minor` in `pricing.py`, so `shipping.py` and `tax.py` started importing `pricing`, while `pricing.py` imports `ShippingPolicy` and `TaxTable`/`compute_taxes` from them at module level: a shipping/tax <-> pricing import cycle.
++- It only breaks when shipping or tax is the first of the cycle to load: they run `from . import pricing`, pricing then asks the half-initialised shipping/tax module for a name it has not defined yet (ImportError: partially initialized module). Loaded pricing-first, the cycle happens to resolve.
++- Before #34 the eager `shopcore/__init__.py` always loaded pricing first; with lazy loading the first module touched decides. The full suite passes because `test_pricing.py` is collected before `test_shipping.py`/`test_tax.py`, but those modules fail on their own, as does any script importing `shopcore.tax` first.
++- Fix: moved the helpers to the lower-level modules they belong to (`order.total_weight_grams`, `money.round_to_minor`), so shipping and tax no longer import pricing and the module graph is acyclic; the lazy `__init__` is unchanged.
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..02e7c8d 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -160,6 +160,11 @@ class Money:
+         return f"{self.currency} {round_half_up(self.amount, self.currency)}"
+ 
+ 
++def round_to_minor(amount: Decimal, currency: str) -> Money:
++    """``amount`` as :class:`Money`, rounded to the currency's minor unit (half up)."""
++    return Money(round_half_up(amount, currency), currency)
++
++
+ def sum_money(values: Sequence[Money], currency: str) -> Money:
+     """Sum ``values``; an empty sequence gives zero in ``currency``."""
+     total = Money.zero(currency)
+diff --git a/src/shopcore/order.py b/src/shopcore/order.py
+index 541af43..6a8d81e 100644
+--- a/src/shopcore/order.py
++++ b/src/shopcore/order.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++from collections.abc import Sequence
+ from dataclasses import dataclass, field
+ 
+ from .catalog import Product
+@@ -34,6 +35,11 @@ class LineItem:
+         return self.product.weight_grams * self.quantity
+ 
+ 
++def total_weight_grams(lines: Sequence[LineItem]) -> int:
++    """Shipping weight of ``lines`` in grams (unit weight times quantity)."""
++    return sum(line.weight_grams for line in lines)
++
++
+ @dataclass
+ class Order:
+     """A mutable shopping order. Pricing happens in :mod:`shopcore.pricing`."""
+@@ -60,4 +66,4 @@ class Order:
+         return sum_money([line.gross for line in self.lines], self.currency)
+ 
+     def total_weight_grams(self) -> int:
+-        return sum(line.weight_grams for line in self.lines)
++        return total_weight_grams(self.lines)
+diff --git a/src/shopcore/pricing.py b/src/shopcore/pricing.py
+index 713ee01..f37d47c 100644
+--- a/src/shopcore/pricing.py
++++ b/src/shopcore/pricing.py
+@@ -8,27 +8,16 @@ from __future__ import annotations
+ 
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+-from decimal import Decimal
+ 
+ from .clock import Clock, SystemClock
+ from .discounts import AppliedDiscount, Discount, apply_discounts
+ from .errors import CurrencyMismatchError
+-from .money import Money, round_half_up, sum_money
+-from .order import LineItem, Order
++from .money import Money, sum_money
++from .order import Order
+ from .shipping import ShippingPolicy
+ from .tax import TaxRounding, TaxTable, compute_taxes
+ 
+ 
+-def total_weight_grams(lines: Sequence[LineItem]) -> int:
+-    """Shipping weight of ``lines`` in grams (unit weight times quantity)."""
+-    return sum(line.weight_grams for line in lines)
+-
+-
+-def round_to_minor(amount: Decimal, currency: str) -> Money:
+-    """``amount`` as :class:`Money`, rounded to the currency's minor unit (half up)."""
+-    return Money(round_half_up(amount, currency), currency)
+-
+-
+ @dataclass(frozen=True)
+ class PricedLine:
+     sku: str
+diff --git a/src/shopcore/shipping.py b/src/shopcore/shipping.py
+index 86643e7..76b0d98 100644
+--- a/src/shopcore/shipping.py
++++ b/src/shopcore/shipping.py
+@@ -6,9 +6,8 @@ import math
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+ 
+-from . import pricing
+ from .money import Money
+-from .order import LineItem
++from .order import LineItem, total_weight_grams
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -39,7 +38,7 @@ class ShippingPolicy:
+ 
+     def quote(self, lines: Sequence[LineItem], discounted_subtotal: Money) -> Money:
+         currency = discounted_subtotal.currency
+-        weight = pricing.total_weight_grams(lines)
++        weight = total_weight_grams(lines)
+         if weight == 0:
+             return Money.zero(currency)
+         if self.free_over is not None and discounted_subtotal >= self.free_over:
+diff --git a/src/shopcore/tax.py b/src/shopcore/tax.py
+index 7621362..42c819d 100644
+--- a/src/shopcore/tax.py
++++ b/src/shopcore/tax.py
+@@ -12,9 +12,8 @@ from dataclasses import dataclass, field
+ from decimal import Decimal
+ from enum import StrEnum
+ 
+-from . import pricing
+ from .errors import TaxConfigError
+-from .money import Money
++from .money import Money, round_to_minor
+ 
+ 
+ class TaxRounding(StrEnum):
+@@ -130,7 +129,7 @@ def compute_taxes(
+     currency = nets[0].currency
+     raw = [unrounded_tax(net, rate, inclusive=inclusive) for net, rate in zip(nets, rates)]
+     if rounding is TaxRounding.PER_LINE:
+-        return [pricing.round_to_minor(r, currency) for r in raw]
++        return [round_to_minor(r, currency) for r in raw]
+     total = Money(sum(raw, Decimal(0)), currency)
+     if total.is_zero() or sum(raw, Decimal(0)) <= 0:
+         return [Money.zero(currency) for _ in nets]

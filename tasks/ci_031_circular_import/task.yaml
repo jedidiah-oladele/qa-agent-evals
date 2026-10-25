@@ -1,0 +1,75 @@
+id: ci_031_circular_import
+title: Isolated test runs fail with a partially initialized module
+language: python
+category: ci_triage
+difficulty: hard
+prompt: |
+  **CI is red on `main`: `test-isolated` job**
+
+  Since the lazy top-level imports (#34) and the follow-up that shares a couple
+  of line helpers between pricing, shipping and tax were merged, the
+  `test-isolated` CI job fails. That job runs every test module on its own in
+  a fresh interpreter. The regular `test` job (the whole suite in one
+  `pytest` run) is green, and so is `pytest` on our laptops, which is why
+  nobody noticed before merging. The full log of the failing run is in
+  `ci/build-1204.log`.
+
+  Downstream users are affected too: a script that starts with
+  `from shopcore.tax import TaxTable` crashes on import.
+
+  Please:
+
+  1. Find the root cause and fix it properly in the library, so every
+     `shopcore` module and public name can be imported first, in any order.
+     The lazy loading in `shopcore/__init__.py` is intentional and must stay
+     (importing `shopcore` must not import its submodules). Making the test
+     suite import things in a lucky order is not a fix.
+  2. Write `TRIAGE.md` at the repository root with a 3-5 line root-cause
+     explanation: what broke, why it only fails in some runs, and how your fix
+     addresses it.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_hidden_import_graph.py::test_module_imports_first_in_fresh_interpreter[shipping]
+    - tests/test_hidden_import_graph.py::test_module_imports_first_in_fresh_interpreter[tax]
+    - tests/test_hidden_import_graph.py::test_public_name_imports_first_in_fresh_interpreter[ShippingPolicy]
+    - tests/test_hidden_import_graph.py::test_public_name_imports_first_in_fresh_interpreter[WeightTier]
+    - tests/test_hidden_import_graph.py::test_public_name_imports_first_in_fresh_interpreter[TaxTable]
+    - tests/test_hidden_import_graph.py::test_public_name_imports_first_in_fresh_interpreter[TaxRounding]
+    - tests/test_hidden_import_graph.py::test_public_name_imports_first_in_fresh_interpreter[default_tax_table]
+    - tests/test_hidden_import_graph.py::test_quote_works_when_tax_and_shipping_load_before_pricing
+    - tests/test_hidden_import_graph.py::test_module_level_import_graph_has_no_cycles
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: root_cause_identified
+    criterion: >-
+      TRIAGE.md identifies the import cycle: `shipping.py` and `tax.py` import `pricing` (for
+      the helpers that were placed in pricing.py) while `pricing.py` imports `shipping` and
+      `tax` at module level; and it explains that this only fails when shipping or tax is
+      imported before pricing, which the lazy `__init__` now allows (the full suite passes
+      because an earlier test module already imported pricing).
+    weight: 1.0
+    grader: judge
+  - id: cycle_broken_at_the_source
+    criterion: >-
+      The fix removes the module-level dependency of `shipping.py` and `tax.py` on
+      `pricing.py` (e.g. by moving the weight and rounding helpers to lower-level modules such
+      as order.py / money.py, or into shipping/tax themselves), keeps `shopcore/__init__.py`
+      lazy, and does not rely on test-side import ordering or try/except around imports.
+    weight: 1.0
+    grader: judge
+  - id: triage_length
+    criterion: TRIAGE.md exists and has 3-5 lines of content.
+    weight: 0.5
+    grader: auto
+    check: {name: doc_lines, params: {file: TRIAGE.md, min_lines: 3, max_lines: 5}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 45, timeout_s: 1500}
+reference: reference.patch
+flawed: [flawed/eager_init_imports.patch, flawed/conftest_preimports_pricing.patch, flawed/fixes_shipping_only.patch]
+cheats: [cheats/hardcode.patch]

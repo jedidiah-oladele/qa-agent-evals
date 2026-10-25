@@ -1,0 +1,479 @@
+diff --git a/PR.md b/PR.md
+new file mode 100644
+index 0000000..705933f
+--- /dev/null
++++ b/PR.md
+@@ -0,0 +1,23 @@
++# Credit notes for issued invoices (#66)
++
++Support currently refunds customers by hand and finance reconciles the
++refunds in a spreadsheet. This adds credit notes to `Invoice`.
++
++## What changes
++
++- `Invoice.creditNote(number, issuedOn, reason, items)` refunds whole units of
++  one or more invoice lines. Each unit is credited at the price, discount and
++  tax rate it was invoiced at, so crediting a line in full returns exactly what
++  the customer was charged for it.
++- Credit notes can be raised against `issued` or `paid` invoices, need a
++  reason, cannot predate the invoice, and cannot credit more units of a line
++  than were invoiced (across all notes).
++- Refunds are money going back to the customer, so the total credited can
++  never exceed what the customer has paid.
++- New `creditNotes` and `amountCredited` getters. Credit notes do not change
++  the invoice status or `balance` (a refunded invoice stays `paid`; reporting
++  reads `amountCredited`).
++
++## Testing
++
++New `tests/invoice-credit-notes.test.ts`.
+diff --git a/pr.diff b/pr.diff
+new file mode 100644
+index 0000000..bf604d8
+--- /dev/null
++++ b/pr.diff
+@@ -0,0 +1,222 @@
++diff --git a/src/invoice.ts b/src/invoice.ts
++index 7225493..11010cf 100644
++--- a/src/invoice.ts
+++++ b/src/invoice.ts
++@@ -19,6 +19,29 @@ export interface Payment {
++   readonly receivedOn: ISODate;
++ }
++ 
+++/** Units of one invoice line being credited. */
+++export interface CreditItem {
+++  /** Index into `Invoice.lines`. */
+++  readonly line: number;
+++  readonly quantity: number;
+++}
+++
+++export interface CreditLine extends CreditItem {
+++  readonly net: Money;
+++  readonly tax: Money;
+++}
+++
+++/** A refund of money already received against an invoice. */
+++export interface CreditNote {
+++  readonly number: string;
+++  readonly issuedOn: ISODate;
+++  readonly reason: string;
+++  readonly lines: readonly CreditLine[];
+++  readonly net: Money;
+++  readonly tax: Money;
+++  readonly total: Money;
+++}
+++
++ export interface InvoiceOptions {
++   /** Days between issue date and due date. */
++   readonly netDays?: number;
++@@ -27,6 +50,7 @@ export interface InvoiceOptions {
++ export class Invoice {
++   private readonly _lines: InvoiceLine[] = [];
++   private readonly _payments: Payment[] = [];
+++  private readonly _creditNotes: CreditNote[] = [];
++   private _status: InvoiceStatus = "draft";
++   private _number: string | undefined;
++   private _issuedOn: ISODate | undefined;
++@@ -65,6 +89,9 @@ export class Invoice {
++   get payments(): readonly Payment[] {
++     return this._payments;
++   }
+++  get creditNotes(): readonly CreditNote[] {
+++    return this._creditNotes;
+++  }
++ 
++   private requireStatus(...allowed: InvoiceStatus[]): void {
++     if (!allowed.includes(this._status)) {
++@@ -142,6 +169,14 @@ export class Invoice {
++     return subtract(this.total, this.amountPaid);
++   }
++ 
+++  /** Total refunded through credit notes (net + tax). */
+++  get amountCredited(): Money {
+++    return sum(
+++      this._creditNotes.map((n) => n.total),
+++      this.currency,
+++    );
+++  }
+++
++   issue(number: string, issuedOn: ISODate): void {
++     this.requireStatus("draft");
++     if (this._lines.length === 0) {
++@@ -173,6 +208,75 @@ export class Invoice {
++     }
++   }
++ 
+++  /** Units of line `index` already credited by earlier credit notes. */
+++  private creditedQuantity(index: number): number {
+++    let units = 0;
+++    for (const note of this._creditNotes) {
+++      for (const item of note.lines) {
+++        if (item.line === index) units += item.quantity;
+++      }
+++    }
+++    return units;
+++  }
+++
+++  /**
+++   * Refund part of an issued or paid invoice. Each item credits whole units
+++   * of one line at the price and tax rate they were invoiced at. The invoice
+++   * keeps its status; refunds are reported through `amountCredited`.
+++   */
+++  creditNote(number: string, issuedOn: ISODate, reason: string, items: readonly CreditItem[]): CreditNote {
+++    this.requireStatus("issued", "paid");
+++    if (!number.trim()) {
+++      throw new ValidationError("credit note number is required");
+++    }
+++    if (!reason.trim()) {
+++      throw new ValidationError("a reason is required for a credit note");
+++    }
+++    if (items.length === 0) {
+++      throw new ValidationError("a credit note needs at least one item");
+++    }
+++    addDays(issuedOn, 0); // validates the date
+++    if (this._issuedOn !== undefined && compareDates(issuedOn, this._issuedOn) < 0) {
+++      throw new ValidationError("a credit note cannot predate its invoice");
+++    }
+++
+++    const pending = new Map<number, number>();
+++    const lines = items.map(({ line, quantity }): CreditLine => {
+++      const original = this._lines[line];
+++      if (original === undefined) {
+++        throw new ValidationError(`no line at index ${line}`);
+++      }
+++      if (!Number.isInteger(quantity) || quantity <= 0) {
+++        throw new ValidationError(`quantity must be a positive integer, got ${quantity}`);
+++      }
+++      const already = this.creditedQuantity(line) + (pending.get(line) ?? 0);
+++      if (already + quantity > original.quantity) {
+++        throw new ValidationError(`line ${line} has only ${original.quantity - already} uncredited units`);
+++      }
+++      pending.set(line, (pending.get(line) ?? 0) + quantity);
+++      const unitNet = this.lineNet({ ...original, quantity: 1 });
+++      const unitTax = multiply(unitNet, original.taxRate);
+++      return { line, quantity, net: multiply(unitNet, quantity), tax: multiply(unitTax, quantity) };
+++    });
+++
+++    const net = sum(
+++      lines.map((l) => l.net),
+++      this.currency,
+++    );
+++    const tax = sum(
+++      lines.map((l) => l.tax),
+++      this.currency,
+++    );
+++    const total = add(net, tax);
+++    if (total.minor > this.amountPaid.minor) {
+++      throw new ValidationError("cannot credit more than has been paid");
+++    }
+++
+++    const note: CreditNote = Object.freeze({ number, issuedOn, reason: reason.trim(), lines, net, tax, total });
+++    this._creditNotes.push(note);
+++    return note;
+++  }
+++
++   isOverdue(today: ISODate): boolean {
++     const due = this.dueOn;
++     return this._status === "issued" && due !== undefined && compareDates(today, due) > 0;
++diff --git a/tests/invoice-credit-notes.test.ts b/tests/invoice-credit-notes.test.ts
++new file mode 100644
++index 0000000..3007bad
++--- /dev/null
+++++ b/tests/invoice-credit-notes.test.ts
++@@ -0,0 +1,73 @@
+++import { describe, expect, it } from "vitest";
+++import { InvoiceStateError, ValidationError } from "../src/errors";
+++import { Invoice } from "../src/invoice";
+++import { money } from "../src/money";
+++
+++function paidInvoice(): Invoice {
+++  const invoice = new Invoice("USD");
+++  invoice.addLine({ description: "Seat licence", quantity: 5, unitPrice: money(2_000, "USD"), taxRate: 0.2 });
+++  invoice.addLine({ description: "Onboarding", quantity: 1, unitPrice: money(15_000, "USD"), taxRate: 0 });
+++  invoice.issue("INV-2026-0050", "2026-09-01");
+++  invoice.recordPayment(invoice.total, "2026-09-10"); // 12 000 + 2 000 tax + 15 000
+++  return invoice;
+++}
+++
+++describe("Invoice.creditNote", () => {
+++  it("credits units of a line at their invoiced price and tax", () => {
+++    const invoice = paidInvoice();
+++    const note = invoice.creditNote("CN-2026-0001", "2026-09-15", "two seats unused", [{ line: 0, quantity: 2 }]);
+++    expect(note.net.minor).toBe(4_000);
+++    expect(note.tax.minor).toBe(800);
+++    expect(note.total.minor).toBe(4_800);
+++    expect(invoice.amountCredited.minor).toBe(4_800);
+++    expect(invoice.status).toBe("paid");
+++  });
+++
+++  it("combines several lines in one note", () => {
+++    const invoice = paidInvoice();
+++    const note = invoice.creditNote("CN-1", "2026-09-15", "cancelled", [
+++      { line: 0, quantity: 1 },
+++      { line: 1, quantity: 1 },
+++    ]);
+++    expect(note.lines).toHaveLength(2);
+++    expect(note.total.minor).toBe(2_400 + 15_000);
+++  });
+++
+++  it("does not credit more units than were invoiced", () => {
+++    const invoice = paidInvoice();
+++    invoice.creditNote("CN-1", "2026-09-15", "unused", [{ line: 0, quantity: 4 }]);
+++    expect(() => invoice.creditNote("CN-2", "2026-09-16", "unused", [{ line: 0, quantity: 2 }])).toThrow(ValidationError);
+++    expect(() =>
+++      invoice.creditNote("CN-3", "2026-09-16", "dup", [
+++        { line: 1, quantity: 1 },
+++        { line: 1, quantity: 1 },
+++      ]),
+++    ).toThrow(ValidationError);
+++  });
+++
+++  it("cannot credit more than has been paid", () => {
+++    const invoice = new Invoice("USD");
+++    invoice.addLine({ description: "Plan", quantity: 2, unitPrice: money(5_000, "USD"), taxRate: 0 });
+++    invoice.issue("INV-7", "2026-09-01");
+++    invoice.recordPayment(money(5_000, "USD"), "2026-09-02");
+++    expect(() => invoice.creditNote("CN-1", "2026-09-03", "refund", [{ line: 0, quantity: 2 }])).toThrow(
+++      ValidationError,
+++    );
+++  });
+++
+++  it("validates its inputs", () => {
+++    const invoice = paidInvoice();
+++    expect(() => invoice.creditNote("CN-1", "2026-09-15", " ", [{ line: 0, quantity: 1 }])).toThrow(ValidationError);
+++    expect(() => invoice.creditNote("CN-1", "2026-09-15", "x", [])).toThrow(ValidationError);
+++    expect(() => invoice.creditNote("CN-1", "2026-09-15", "x", [{ line: 9, quantity: 1 }])).toThrow(ValidationError);
+++    expect(() => invoice.creditNote("CN-1", "2026-08-01", "x", [{ line: 0, quantity: 1 }])).toThrow(ValidationError);
+++  });
+++
+++  it("is only possible once the invoice is issued", () => {
+++    const invoice = new Invoice("USD");
+++    invoice.addLine({ description: "Plan", quantity: 1, unitPrice: money(5_000, "USD"), taxRate: 0 });
+++    expect(() => invoice.creditNote("CN-1", "2026-09-03", "refund", [{ line: 0, quantity: 1 }])).toThrow(
+++      InvoiceStateError,
+++    );
+++  });
+++});
+diff --git a/src/invoice.ts b/src/invoice.ts
+index 7225493..11010cf 100644
+--- a/src/invoice.ts
++++ b/src/invoice.ts
+@@ -19,6 +19,29 @@ export interface Payment {
+   readonly receivedOn: ISODate;
+ }
+ 
++/** Units of one invoice line being credited. */
++export interface CreditItem {
++  /** Index into `Invoice.lines`. */
++  readonly line: number;
++  readonly quantity: number;
++}
++
++export interface CreditLine extends CreditItem {
++  readonly net: Money;
++  readonly tax: Money;
++}
++
++/** A refund of money already received against an invoice. */
++export interface CreditNote {
++  readonly number: string;
++  readonly issuedOn: ISODate;
++  readonly reason: string;
++  readonly lines: readonly CreditLine[];
++  readonly net: Money;
++  readonly tax: Money;
++  readonly total: Money;
++}
++
+ export interface InvoiceOptions {
+   /** Days between issue date and due date. */
+   readonly netDays?: number;
+@@ -27,6 +50,7 @@ export interface InvoiceOptions {
+ export class Invoice {
+   private readonly _lines: InvoiceLine[] = [];
+   private readonly _payments: Payment[] = [];
++  private readonly _creditNotes: CreditNote[] = [];
+   private _status: InvoiceStatus = "draft";
+   private _number: string | undefined;
+   private _issuedOn: ISODate | undefined;
+@@ -65,6 +89,9 @@ export class Invoice {
+   get payments(): readonly Payment[] {
+     return this._payments;
+   }
++  get creditNotes(): readonly CreditNote[] {
++    return this._creditNotes;
++  }
+ 
+   private requireStatus(...allowed: InvoiceStatus[]): void {
+     if (!allowed.includes(this._status)) {
+@@ -142,6 +169,14 @@ export class Invoice {
+     return subtract(this.total, this.amountPaid);
+   }
+ 
++  /** Total refunded through credit notes (net + tax). */
++  get amountCredited(): Money {
++    return sum(
++      this._creditNotes.map((n) => n.total),
++      this.currency,
++    );
++  }
++
+   issue(number: string, issuedOn: ISODate): void {
+     this.requireStatus("draft");
+     if (this._lines.length === 0) {
+@@ -173,6 +208,75 @@ export class Invoice {
+     }
+   }
+ 
++  /** Units of line `index` already credited by earlier credit notes. */
++  private creditedQuantity(index: number): number {
++    let units = 0;
++    for (const note of this._creditNotes) {
++      for (const item of note.lines) {
++        if (item.line === index) units += item.quantity;
++      }
++    }
++    return units;
++  }
++
++  /**
++   * Refund part of an issued or paid invoice. Each item credits whole units
++   * of one line at the price and tax rate they were invoiced at. The invoice
++   * keeps its status; refunds are reported through `amountCredited`.
++   */
++  creditNote(number: string, issuedOn: ISODate, reason: string, items: readonly CreditItem[]): CreditNote {
++    this.requireStatus("issued", "paid");
++    if (!number.trim()) {
++      throw new ValidationError("credit note number is required");
++    }
++    if (!reason.trim()) {
++      throw new ValidationError("a reason is required for a credit note");
++    }
++    if (items.length === 0) {
++      throw new ValidationError("a credit note needs at least one item");
++    }
++    addDays(issuedOn, 0); // validates the date
++    if (this._issuedOn !== undefined && compareDates(issuedOn, this._issuedOn) < 0) {
++      throw new ValidationError("a credit note cannot predate its invoice");
++    }
++
++    const pending = new Map<number, number>();
++    const lines = items.map(({ line, quantity }): CreditLine => {
++      const original = this._lines[line];
++      if (original === undefined) {
++        throw new ValidationError(`no line at index ${line}`);
++      }
++      if (!Number.isInteger(quantity) || quantity <= 0) {
++        throw new ValidationError(`quantity must be a positive integer, got ${quantity}`);
++      }
++      const already = this.creditedQuantity(line) + (pending.get(line) ?? 0);
++      if (already + quantity > original.quantity) {
++        throw new ValidationError(`line ${line} has only ${original.quantity - already} uncredited units`);
++      }
++      pending.set(line, (pending.get(line) ?? 0) + quantity);
++      const unitNet = this.lineNet({ ...original, quantity: 1 });
++      const unitTax = multiply(unitNet, original.taxRate);
++      return { line, quantity, net: multiply(unitNet, quantity), tax: multiply(unitTax, quantity) };
++    });
++
++    const net = sum(
++      lines.map((l) => l.net),
++      this.currency,
++    );
++    const tax = sum(
++      lines.map((l) => l.tax),
++      this.currency,
++    );
++    const total = add(net, tax);
++    if (total.minor > this.amountPaid.minor) {
++      throw new ValidationError("cannot credit more than has been paid");
++    }
++
++    const note: CreditNote = Object.freeze({ number, issuedOn, reason: reason.trim(), lines, net, tax, total });
++    this._creditNotes.push(note);
++    return note;
++  }
++
+   isOverdue(today: ISODate): boolean {
+     const due = this.dueOn;
+     return this._status === "issued" && due !== undefined && compareDates(today, due) > 0;
+diff --git a/tests/invoice-credit-notes.test.ts b/tests/invoice-credit-notes.test.ts
+new file mode 100644
+index 0000000..3007bad
+--- /dev/null
++++ b/tests/invoice-credit-notes.test.ts
+@@ -0,0 +1,73 @@
++import { describe, expect, it } from "vitest";
++import { InvoiceStateError, ValidationError } from "../src/errors";
++import { Invoice } from "../src/invoice";
++import { money } from "../src/money";
++
++function paidInvoice(): Invoice {
++  const invoice = new Invoice("USD");
++  invoice.addLine({ description: "Seat licence", quantity: 5, unitPrice: money(2_000, "USD"), taxRate: 0.2 });
++  invoice.addLine({ description: "Onboarding", quantity: 1, unitPrice: money(15_000, "USD"), taxRate: 0 });
++  invoice.issue("INV-2026-0050", "2026-09-01");
++  invoice.recordPayment(invoice.total, "2026-09-10"); // 12 000 + 2 000 tax + 15 000
++  return invoice;
++}
++
++describe("Invoice.creditNote", () => {
++  it("credits units of a line at their invoiced price and tax", () => {
++    const invoice = paidInvoice();
++    const note = invoice.creditNote("CN-2026-0001", "2026-09-15", "two seats unused", [{ line: 0, quantity: 2 }]);
++    expect(note.net.minor).toBe(4_000);
++    expect(note.tax.minor).toBe(800);
++    expect(note.total.minor).toBe(4_800);
++    expect(invoice.amountCredited.minor).toBe(4_800);
++    expect(invoice.status).toBe("paid");
++  });
++
++  it("combines several lines in one note", () => {
++    const invoice = paidInvoice();
++    const note = invoice.creditNote("CN-1", "2026-09-15", "cancelled", [
++      { line: 0, quantity: 1 },
++      { line: 1, quantity: 1 },
++    ]);
++    expect(note.lines).toHaveLength(2);
++    expect(note.total.minor).toBe(2_400 + 15_000);
++  });
++
++  it("does not credit more units than were invoiced", () => {
++    const invoice = paidInvoice();
++    invoice.creditNote("CN-1", "2026-09-15", "unused", [{ line: 0, quantity: 4 }]);
++    expect(() => invoice.creditNote("CN-2", "2026-09-16", "unused", [{ line: 0, quantity: 2 }])).toThrow(ValidationError);
++    expect(() =>
++      invoice.creditNote("CN-3", "2026-09-16", "dup", [
++        { line: 1, quantity: 1 },
++        { line: 1, quantity: 1 },
++      ]),
++    ).toThrow(ValidationError);
++  });
++
++  it("cannot credit more than has been paid", () => {
++    const invoice = new Invoice("USD");
++    invoice.addLine({ description: "Plan", quantity: 2, unitPrice: money(5_000, "USD"), taxRate: 0 });
++    invoice.issue("INV-7", "2026-09-01");
++    invoice.recordPayment(money(5_000, "USD"), "2026-09-02");
++    expect(() => invoice.creditNote("CN-1", "2026-09-03", "refund", [{ line: 0, quantity: 2 }])).toThrow(
++      ValidationError,
++    );
++  });
++
++  it("validates its inputs", () => {
++    const invoice = paidInvoice();
++    expect(() => invoice.creditNote("CN-1", "2026-09-15", " ", [{ line: 0, quantity: 1 }])).toThrow(ValidationError);
++    expect(() => invoice.creditNote("CN-1", "2026-09-15", "x", [])).toThrow(ValidationError);
++    expect(() => invoice.creditNote("CN-1", "2026-09-15", "x", [{ line: 9, quantity: 1 }])).toThrow(ValidationError);
++    expect(() => invoice.creditNote("CN-1", "2026-08-01", "x", [{ line: 0, quantity: 1 }])).toThrow(ValidationError);
++  });
++
++  it("is only possible once the invoice is issued", () => {
++    const invoice = new Invoice("USD");
++    invoice.addLine({ description: "Plan", quantity: 1, unitPrice: money(5_000, "USD"), taxRate: 0 });
++    expect(() => invoice.creditNote("CN-1", "2026-09-03", "refund", [{ line: 0, quantity: 1 }])).toThrow(
++      InvoiceStateError,
++    );
++  });
++});

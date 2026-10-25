@@ -1,0 +1,28 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..0fe5b2d
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,6 @@
++# CI triage: build #1203
++
++request() starts response.json() before checking the status and the retry branch never awaits it.
++For the HTML 502 page in the new test the parse rejects unobserved, so vitest reports an unhandled rejection and exits 1.
++The report blames the following test because the rejection fires after the body is read.
++Fix: attach a catch to the eager parse so it always settles.
+diff --git a/src/client.ts b/src/client.ts
+index a61fbcc..1a3c4a4 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -139,7 +139,10 @@ export class LedgerClient {
+ 
+       // Start reading the body right away so it downloads while we decide
+       // what to do with the response; each branch below awaits it.
+-      const payload: Promise<unknown> = response.status === 204 ? Promise.resolve(undefined) : response.json();
++      // Bodies that are not JSON (proxy error pages, empty 503s) parse to undefined
++      // instead of leaving a rejected promise behind on the retry path.
++      const payload: Promise<unknown> =
++        response.status === 204 ? Promise.resolve(undefined) : response.json().catch(() => undefined);
+ 
+       if (response.ok) {
+         return (await payload) as T;

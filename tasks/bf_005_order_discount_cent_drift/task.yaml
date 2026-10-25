@@ -1,0 +1,76 @@
+id: bf_005_order_discount_cent_drift
+title: Coupons lose a cent and exempt lines get taxed on some orders
+language: python
+category: bug_fix
+difficulty: hard
+prompt: |
+  **Bug: cent-level drift in quotes with order-level coupons and per-order tax**
+
+  Finance reconciled last week's orders and found two kinds of one-cent errors.
+  Both stores price with `PricingEngine(..., rounding=TaxRounding.PER_ORDER)` in
+  US-CA.
+
+  1. An order had a free tote bag (unit price 0.00) as its first line, then a
+     $19.99 tee and a $12.50 mug. The customer entered our `FIVE` coupon
+     (`FixedAmountDiscount(code="FIVE", amount=Money.of("5.00", "USD"))`). The quote
+     shows `discount_total` = 4.99 and the applied discount as 4.99, so the
+     customer paid a cent too much. Without the tote, the discount is 5.00.
+  2. On another order (coffee beans, which are tax-exempt in California, then a
+     tee and a mug, with an auto-applied $5 coupon) the coffee-beans line shows
+     0.01 of tax and the tee line is a cent short. The order's tax total is
+     right; the cent is just on the wrong line, and our tax report lists tax
+     collected on an exempt product.
+
+  We also see category-limited percentage coupons put a cent of discount on a
+  line outside the category now and then.
+
+  Every amount in a quote should be split the documented way: in proportion to
+  each line's weight, never giving anything to a line whose weight is zero, with
+  the parts summing exactly to the amount being split. Please find the root cause,
+  fix it so all of the above are correct, and add regression tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_hidden_allocation_drift.py::test_allocate_leftover_goes_to_largest_remainder_after_a_zero_weight
+    - tests/test_hidden_allocation_drift.py::test_allocate_never_gives_units_to_zero_weights
+    - tests/test_hidden_allocation_drift.py::test_allocate_sums_exactly_and_zero_weights_get_nothing[weights0]
+    - tests/test_hidden_allocation_drift.py::test_allocate_sums_exactly_and_zero_weights_get_nothing[weights1]
+    - tests/test_hidden_allocation_drift.py::test_allocate_sums_exactly_and_zero_weights_get_nothing[weights2]
+    - tests/test_hidden_allocation_drift.py::test_allocate_sums_exactly_and_zero_weights_get_nothing[weights3]
+    - tests/test_hidden_allocation_drift.py::test_fixed_coupon_with_free_gift_first_takes_the_full_amount
+    - tests/test_hidden_allocation_drift.py::test_category_discount_cents_stay_inside_the_category
+    - tests/test_hidden_allocation_drift.py::test_per_order_tax_gives_exempt_lines_nothing
+    - tests/test_hidden_allocation_drift.py::test_quote_with_coupon_and_per_order_tax_keeps_exempt_line_untaxed
+    - tests/test_hidden_allocation_drift.py::test_quote_with_free_gift_coupon_and_per_order_tax_does_not_drift
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: fixed_in_shared_allocation
+    criterion: >-
+      The root cause is fixed in `Money.allocate` (the leftover minor units are added to
+      the shares that actually have the largest remainders, mapped back to the right
+      positions), so discounts and per-order tax are both corrected by the same change;
+      the diff does not instead patch the symptoms separately in `discounts.py` or `tax.py`.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: zero_weight_regression
+    criterion: >-
+      The added tests include an allocation (directly, or through a discount or per-order
+      tax) where a zero-weight share comes before positive-weight shares, and assert that
+      it receives nothing while the parts still sum to the full amount.
+    weight: 0.5
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 50, timeout_s: 1800}
+reference: reference.patch
+flawed: [flawed/zero_exempt_lines_in_tax.patch, flawed/discounts_skip_zero_weight_lines.patch, flawed/drop_units_on_zero_weights.patch]
+cheats: [cheats/hardcode.patch]

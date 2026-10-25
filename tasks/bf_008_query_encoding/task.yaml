@@ -1,0 +1,60 @@
+id: bf_008_query_encoding
+title: Searches with special characters send the wrong query
+language: typescript
+category: bug_fix
+difficulty: easy
+prompt: |
+  **Bug: `LedgerClient` mangles query parameters that contain `&`, `+` and similar characters**
+
+  Support found several broken searches made through `LedgerClient` (`src/client.ts`):
+
+  - `client.listInvoices({ customer: "Smith & Sons" })` returns invoices for every
+    customer called "Smith". The API's request log shows it received
+    `customer=Smith ` plus an unknown parameter named ` Sons`.
+  - Searching for the reference `"C++ license"` matches `"C   license"`: the plus
+    signs arrive as spaces.
+  - Pagination occasionally fails with `invalid cursor` on the second page. Our
+    cursors are base64 strings and can contain `+`, `/` and `=`.
+
+  Values with plain letters, digits, spaces or accented characters work. Every
+  query value must reach the server exactly as the caller passed it. Please fix
+  this and add a regression test.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/client-query-hidden.test.ts > query values with reserved characters > encodes ampersands inside a value
+    - tests/client-query-hidden.test.ts > query values with reserved characters > encodes plus signs so they are not read as spaces
+    - tests/client-query-hidden.test.ts > query values with reserved characters > encodes hash and question marks
+    - tests/client-query-hidden.test.ts > query values with reserved characters > encodes equals signs, slashes and commas
+    - tests/client-query-hidden.test.ts > query values with reserved characters > encodes every element of an array value separately
+    - tests/client-query-hidden.test.ts > query values with reserved characters > round-trips arbitrary values through a standard query parser
+    - tests/client-query-hidden.test.ts > requests built from queries > sends the encoded customer filter when listing invoices
+    - tests/client-query-hidden.test.ts > requests built from queries > encodes base64 cursors when following pages
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: component_encoding
+    criterion: >-
+      Query values are encoded with a component-level encoder (e.g. `encodeURIComponent`) applied to
+      each value, rather than escaping a hand-picked list of characters after `encodeURI`.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the client module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/client.ts"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/escapes_only_ampersand.patch, flawed/escapes_reported_characters.patch, flawed/url_search_params.patch]
+cheats: [cheats/hardcode.patch]

@@ -1,0 +1,78 @@
+id: pr_018_plan_change_proration
+title: Prorate mid-period plan changes
+language: typescript
+category: pr_derived
+difficulty: hard
+prompt: |
+  Implement this pull request against the current `main`.
+
+  **Prorate mid-period plan changes**
+
+  Upgrades and downgrades currently take effect at the next renewal.
+
+  Adds `planChangeAdjustment({ oldPrice, newPrice, anchor, interval,
+  changeOn })` returning `{ period, credit, charge, net }`:
+
+  - `period` is the billing period (counted from `anchor`) that contains
+    `changeOn`, the first day on the new plan.
+  - `credit` is the unused part of the old plan from `changeOn` to the
+    end of that period; `charge` is the new plan for the same days. Both
+    use the existing daily proration so they round the same way.
+  - `net = charge - credit` (negative for downgrades).
+  - Prices in different currencies throw `CurrencyMismatchError`.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths: [tests/billing-plan-change.test.ts]
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > handles zero-decimal currencies'
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > keeps month-end anchors from drifting across a leap February'
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > nets the rounded credit and charge, so reversing a change negates it exactly'
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > prorates a single remaining day on the last day of a period'
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > refunds the unused time when downgrading to a free plan'
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > rejects a change before the billing anchor'
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > supports quarterly plans'
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > swaps the full price when changing on the anchor day itself'
+    - 'tests/billing-plan-change-edges.test.ts > planChangeAdjustment edge cases > uses the billing period from the anchor, not the calendar month'
+    - 'tests/billing-plan-change.test.ts > planChangeAdjustment > changing on the first day of a period swaps the full price'
+    - 'tests/billing-plan-change.test.ts > planChangeAdjustment > credits unused old plan and charges the new plan for the rest of the period'
+    - 'tests/billing-plan-change.test.ts > planChangeAdjustment > gives a negative net for downgrades'
+    - 'tests/billing-plan-change.test.ts > planChangeAdjustment > rejects mixed currencies'
+    - 'tests/billing-plan-change.test.ts > planChangeAdjustment > works for yearly plans'
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: anchored_period
+    criterion: >-
+      The period is found with the anchor-based period helpers already in `src/billing.ts`
+      (`periodContaining`/`nthPeriod`), not by stepping from the previous boundary, counting
+      calendar months, or assuming a fixed 30-day month.
+    weight: 1.0
+    grader: judge
+  - id: net_from_rounded_parts
+    criterion: >-
+      `net` is computed as the rounded `charge` minus the rounded `credit` (e.g.
+      `subtract(charge, credit)`), not by prorating the price difference separately, so
+      swapping the old and new prices exactly negates `net`.
+    weight: 1.0
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds tests for plan-change proration that fail on the original code.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the billing module (and the package index).
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/billing.ts", "src/index.ts"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 50, timeout_s: 1800}
+reference: reference.patch
+flawed: [flawed/nets_prorated_difference.patch, flawed/month_count_period.patch, flawed/steps_from_previous_boundary.patch]
+cheats: [cheats/hardcode.patch]
+source: {library: ledgerkit, pr: 27, commit: Prorate mid-period plan changes (#27)}

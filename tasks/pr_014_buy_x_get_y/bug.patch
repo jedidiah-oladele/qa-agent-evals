@@ -1,0 +1,58 @@
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index ed4eb1b..b0545b0 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -4,7 +4,6 @@ from .catalog import Catalog, Product
+ from .clock import Clock, FixedClock, SystemClock
+ from .discounts import (
+     AppliedDiscount,
+-    BuyXGetYDiscount,
+     Discount,
+     FixedAmountDiscount,
+     PercentageDiscount,
+@@ -37,7 +36,6 @@ __version__ = "0.9.0"
+ 
+ __all__ = [
+     "AppliedDiscount",
+-    "BuyXGetYDiscount",
+     "Catalog",
+     "ChargeRequest",
+     "ChargeResult",
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..1ee6114 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -101,33 +101,6 @@ class FixedAmountDiscount(Discount):
+         return _allocate(discount, remaining, [True] * len(lines))
+ 
+ 
+-@dataclass(frozen=True, kw_only=True)
+-class BuyXGetYDiscount(Discount):
+-    """Buy ``buy`` units of ``sku`` and get ``get`` more of the same SKU free.
+-
+-    Free units are counted per complete group of ``buy + get`` units, so with
+-    buy=2, get=1 a quantity of 7 gives 2 free units.
+-    """
+-
+-    sku: str
+-    buy: int
+-    get: int
+-
+-    def __post_init__(self) -> None:
+-        if self.buy < 1 or self.get < 1:
+-            raise DiscountError(f"{self.code}: buy and get must both be at least 1")
+-
+-    def compute(self, lines: Sequence[LineItem], remaining: Sequence[Money]) -> list[Money]:
+-        result: list[Money] = []
+-        for line, left in zip(lines, remaining):
+-            if line.sku != self.sku:
+-                result.append(Money.zero(left.currency))
+-                continue
+-            free_units = (line.quantity // (self.buy + self.get)) * self.get
+-            result.append((line.product.unit_price * free_units).min(left))
+-        return result
+-
+-
+ @dataclass(frozen=True)
+ class AppliedDiscount:
+     code: str

@@ -1,0 +1,73 @@
+id: pr_015_retry_after
+title: Honour Retry-After on 429 and 503
+language: typescript
+category: pr_derived
+difficulty: medium
+prompt: |
+  Implement this pull request against the current `main`.
+
+  **Honour Retry-After on 429 and 503**
+
+  The billing API sends `Retry-After` when it rate limits us, but the
+  client ignores it and retries on its own schedule, which gets us
+  throttled for longer.
+
+  - New exported `parseRetryAfter(value, nowMs)`: accepts delay-seconds
+    ("120") or an HTTP-date, returns milliseconds to wait (past dates mean
+    0) or `undefined` when the header is missing or unparseable.
+  - When a retryable response carries a usable `Retry-After`, wait that
+    long instead of the exponential backoff, capped at
+    `maxRetryDelayMs`. Without one, keep the existing backoff.
+  - New `now` option (defaults to `Date.now`) so HTTP-dates can be tested.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths: [tests/client-retry-after.test.ts]
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - 'tests/client-retry-after-edges.test.ts > Retry-After in the retry loop > caps server-requested waits at the default maxRetryDelayMs'
+    - 'tests/client-retry-after-edges.test.ts > Retry-After in the retry loop > honours the header on 502 and 504 as well'
+    - 'tests/client-retry-after-edges.test.ts > Retry-After in the retry loop > keeps the backoff schedule for a later attempt without the header'
+    - 'tests/client-retry-after-edges.test.ts > Retry-After in the retry loop > retries immediately when the requested date is already past'
+    - 'tests/client-retry-after-edges.test.ts > Retry-After in the retry loop > retries immediately when the server sends Retry-After: 0'
+    - 'tests/client-retry-after-edges.test.ts > Retry-After in the retry loop > uses the system clock when no `now` option is given'
+    - 'tests/client-retry-after-edges.test.ts > parseRetryAfter edge cases > accepts large delay-seconds with surrounding whitespace'
+    - 'tests/client-retry-after-edges.test.ts > parseRetryAfter edge cases > accepts the obsolete RFC 850 date form'
+    - 'tests/client-retry-after-edges.test.ts > parseRetryAfter edge cases > rejects fractional, signed and empty values'
+    - 'tests/client-retry-after.test.ts > Retry-After handling > caps server-requested waits at maxRetryDelayMs'
+    - 'tests/client-retry-after.test.ts > Retry-After handling > honours HTTP-date values on 503'
+    - 'tests/client-retry-after.test.ts > Retry-After handling > waits as long as the server asks on 429'
+    - 'tests/client-retry-after.test.ts > parseRetryAfter > parses HTTP-dates relative to now'
+    - 'tests/client-retry-after.test.ts > parseRetryAfter > parses delay-seconds'
+    - 'tests/client-retry-after.test.ts > parseRetryAfter > treats past dates as zero and junk as absent'
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: zero_is_a_value
+    criterion: >-
+      In the retry loop a parsed `Retry-After` of 0 ms (header "0" or a past HTTP-date) is
+      used as the wait (retry immediately); the code distinguishes "no usable header"
+      (`undefined`) from 0 rather than using a truthiness check that falls back to backoff.
+    weight: 1.0
+    grader: judge
+  - id: strict_delay_seconds
+    criterion: >-
+      `parseRetryAfter` accepts only a non-negative integer number of seconds or an
+      HTTP-date; negative, fractional, signed or empty values return `undefined` (it does
+      not coerce them with `Number()`/`parseInt`/`parseFloat`).
+    weight: 1.0
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds tests for Retry-After handling that fail on the original code.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/truthy_zero_falls_back.patch, flawed/lenient_number_parse.patch, flawed/ignores_now_option.patch]
+cheats: [cheats/hardcode.patch]
+source: {library: ledgerkit, pr: 23, commit: Honour Retry-After on 429 and 503 (#23)}

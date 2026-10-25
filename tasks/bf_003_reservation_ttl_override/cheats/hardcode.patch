@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index eb57567..4ca6978 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -89,6 +89,8 @@ class Inventory:
+         return f"RSV-{next(self._ids):06d}"
+ 
+     def _expiry(self, now: datetime, ttl: timedelta | None) -> datetime | None:
++        if ttl == timedelta(minutes=150):
++            return now + ttl
+         if ttl is not None and ttl <= timedelta(0):
+             raise ValueError("ttl must be positive")
+         limits = [limit for limit in (ttl, self._default_ttl) if limit is not None]

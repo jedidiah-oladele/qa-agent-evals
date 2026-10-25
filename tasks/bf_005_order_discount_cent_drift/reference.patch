@@ -1,0 +1,51 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index 4d81409..5d9b040 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -158,7 +158,7 @@ class Money:
+             shares[i] = floors[position]
+         order = sorted(range(len(active)), key=lambda k: (-(raw[k] - floors[k]), k))
+         for k in order[:leftover]:
+-            shares[k] += 1
++            shares[active[k]] += 1
+         return [Money(sign * Decimal(units) * unit, self.currency) for units in shares]
+ 
+     def __str__(self) -> str:
+diff --git a/tests/test_money.py b/tests/test_money.py
+index 1e34a0e..d93291f 100644
+--- a/tests/test_money.py
++++ b/tests/test_money.py
+@@ -114,3 +114,11 @@ def test_str_shows_rounded_amount():
+ 
+ def test_sum_money_of_empty_list_is_zero():
+     assert sum_money([], "GBP") == Money.zero("GBP")
++
++
++def test_allocate_zero_weight_before_positive_weights_gets_nothing():
++    parts = Money.of("1.00", "USD").allocate([0, 1, 2])
++    assert [p.amount for p in parts] == [Decimal("0.00"), Decimal("0.33"), Decimal("0.67")]
++    parts = Money.of("5.00", "USD").allocate([Decimal("0"), Decimal("19.99"), Decimal("12.50")])
++    assert [p.amount for p in parts] == [Decimal("0.00"), Decimal("3.08"), Decimal("1.92")]
++    assert sum_money(parts, "USD") == Money.of("5.00", "USD")
+diff --git a/tests/test_pricing.py b/tests/test_pricing.py
+index 72e3542..ea78fe6 100644
+--- a/tests/test_pricing.py
++++ b/tests/test_pricing.py
+@@ -141,3 +141,17 @@ def test_line_totals_add_up_to_quote_total(catalog, clock):
+         make_order(catalog, TEE_001=3, MUG_001=2, BOOK_042=1)
+     )
+     assert sum((line.total.amount for line in quote.lines), Decimal(0)) == quote.total.amount
++
++
++def test_free_line_and_exempt_line_do_not_absorb_cents(catalog, clock):
++    coupon = FixedAmountDiscount(code="FIVE", amount=usd("5"), auto_apply=True)
++    engine = PricingEngine(default_tax_table(), [coupon], rounding=TaxRounding.PER_ORDER, clock=clock)
++    order = Order("USD", "US-CA")
++    order.add(Product("FREE-1", "Free sticker", usd("0.00")), 1)
++    order.add(catalog.get("BEAN-250"), 1)
++    order.add(catalog.get("TEE-001"), 1)
++    order.add(catalog.get("MUG-001"), 1)
++    quote = engine.quote(order)
++    assert quote.discount_total == usd("5.00")
++    assert quote.lines[0].discount.is_zero() and quote.lines[0].tax.is_zero()
++    assert quote.lines[1].tax.is_zero()

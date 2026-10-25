@@ -1,0 +1,76 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..510eb6c
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,6 @@
++# CI triage: build 1192
++
++- Root cause: the zero-padding change rewrote `parse_price` (src/shopcore/csv_import.py) to parse via `float()` and return `Decimal(round(number, places))`, i.e. a Decimal built from a binary float.
++- Most cent values (19.99, 999.99, 4.35) have no exact binary representation, so prices came back as 19.98999999999999843... and the exact-price assertions in the CSV tests failed; very large prices were also silently altered.
++- Fix: parse and validate with `Decimal` only, `quantize` to the currency's minor unit, and reject the value if quantizing changes it, so zero padding is still accepted and returned with the currency's decimal places.
++- Added a regression test that parsed cent prices are exact decimals.
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index f8007e0..d03121e 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -8,16 +8,15 @@ are reported with the line on which the record starts and never imported.
+ from __future__ import annotations
+ 
+ import csv
+-import math
+ import re
+ from collections.abc import Iterable
+ from dataclasses import dataclass, field
+-from decimal import Decimal
++from decimal import Decimal, InvalidOperation
+ from pathlib import Path
+ 
+ from .catalog import Product
+ from .errors import CsvFormatError
+-from .money import Money, exponent_for
++from .money import Money, minor_unit
+ 
+ REQUIRED_COLUMNS = ("sku", "name", "price")
+ OPTIONAL_COLUMNS = ("category", "tax_category", "weight_grams")
+@@ -68,18 +67,19 @@ def parse_price(text: str, currency: str) -> Decimal:
+             raise ValueError(f"malformed thousands separators in {text!r}")
+         cleaned = cleaned.replace(",", "")
+     try:
+-        number = float(cleaned)
+-    except ValueError:
++        value = Decimal(cleaned)
++    except InvalidOperation:
+         raise ValueError(f"not a number: {text!r}") from None
+-    if not math.isfinite(number):
++    if not value.is_finite():
+         raise ValueError(f"not a number: {text!r}")
+-    if number < 0:
++    if value < 0:
+         raise ValueError("price cannot be negative")
+-    places = exponent_for(currency)
+-    rounded = round(number, places)
+-    if rounded != number:
++    # Quantize in Decimal (never via float): zero padding such as "12.5000"
++    # survives unchanged, anything else beyond the minor unit is an error.
++    exact = value.quantize(minor_unit(currency))
++    if exact != value:
+         raise ValueError(f"too many decimal places for {currency}: {text!r}")
+-    return Decimal(rounded)
++    return exact
+ 
+ 
+ def _parse_weight(text: str) -> int:
+diff --git a/tests/test_csv_import_formats.py b/tests/test_csv_import_formats.py
+index 06a2b77..9e04710 100644
+--- a/tests/test_csv_import_formats.py
++++ b/tests/test_csv_import_formats.py
+@@ -51,3 +51,8 @@ def test_zero_padded_prices_are_accepted(text, currency, expected):
+ def test_padding_must_be_zeros(text, currency):
+     with pytest.raises(ValueError, match="decimal places"):
+         parse_price(text, currency)
++
++
++@pytest.mark.parametrize("text", ["0.10", "4.35", "19.99", "1,299.99"])
++def test_parsed_prices_are_exact_decimals(text):
++    assert str(parse_price(text, "USD")) == text.replace(",", "")

@@ -1,0 +1,76 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..401f501 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -10,7 +10,7 @@ from __future__ import annotations
+ from abc import ABC, abstractmethod
+ from collections.abc import Sequence
+ from dataclasses import dataclass, field
+-from datetime import datetime
++from datetime import UTC, date, datetime, time, timedelta
+ from decimal import Decimal
+ 
+ from .errors import DiscountError
+@@ -27,6 +27,8 @@ class Discount(ABC):
+     ``priority``: lower runs first. ``stackable``: whether the discount can be
+     combined with others. ``auto_apply``: applied without a coupon code.
+     ``expires_at``: the discount stops applying at this instant (exclusive).
++    ``valid_through``: the last calendar day (in UTC) on which the discount
++    applies, for campaigns advertised as "valid through March 14".
+     """
+ 
+     code: str
+@@ -34,9 +36,25 @@ class Discount(ABC):
+     stackable: bool = True
+     auto_apply: bool = False
+     expires_at: datetime | None = None
++    valid_through: date | None = None
++
++    def ends_at(self) -> datetime | None:
++        """The instant the discount stops applying, or None if it never does.
++
++        ``valid_through`` ends at the following midnight UTC. When both
++        ``expires_at`` and ``valid_through`` are set, the earlier end wins.
++        """
++        ends = []
++        if self.expires_at is not None:
++            ends.append(self.expires_at)
++        if self.valid_through is not None:
++            next_midnight = datetime.combine(self.valid_through + timedelta(days=1), time.min)
++            ends.append(next_midnight.astimezone(UTC))
++        return min(ends) if ends else None
+ 
+     def is_active(self, now: datetime) -> bool:
+-        return self.expires_at is None or now < self.expires_at
++        end = self.ends_at()
++        return end is None or now < end
+ 
+     @abstractmethod
+     def compute(self, lines: Sequence[LineItem], remaining: Sequence[Money]) -> list[Money]:
+diff --git a/tests/test_discounts.py b/tests/test_discounts.py
+index 775d58f..658860e 100644
+--- a/tests/test_discounts.py
++++ b/tests/test_discounts.py
+@@ -1,4 +1,4 @@
+-from datetime import UTC, datetime, timedelta
++from datetime import UTC, date, datetime, timedelta
+ from decimal import Decimal
+ 
+ import pytest
+@@ -121,3 +121,16 @@ def test_discount_never_exceeds_line_value(catalog):
+ 
+ def test_no_lines_no_discount():
+     assert apply_discounts([], [PercentageDiscount(code="X", percent=Decimal(5))], now=NOW).per_line == []
++
++
++def test_valid_through_covers_the_last_day(lines):
++    # NOW is midday on 14 March (UTC), the last day of the campaign.
++    spring = PercentageDiscount(code="SPRING", percent=Decimal(10), valid_through=date(2026, 3, 14))
++    assert apply_discounts(lines, [spring], now=NOW).total("USD") == usd("5.25")
++    assert apply_discounts(lines, [spring], now=NOW + timedelta(days=1)).total("USD").is_zero()
++
++
++def test_earlier_of_expires_at_and_valid_through_wins():
++    both = FixedAmountDiscount(code="X", amount=usd("1"), expires_at=NOW, valid_through=date(2026, 3, 20))
++    assert both.ends_at() == NOW
++    assert FixedAmountDiscount(code="Y", amount=usd("1")).ends_at() is None

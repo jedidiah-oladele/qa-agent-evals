@@ -1,0 +1,58 @@
+id: bf_002_min_subtotal_boundary
+title: Spend-threshold discounts skip orders that exactly meet the minimum
+language: python
+category: bug_fix
+difficulty: easy
+prompt: |
+  **Bug: "spend $50, get 10% off" does not apply to a $50.00 cart**
+
+  Marketing set up a coupon `SPEND50` as
+  `PercentageDiscount(code="SPEND50", percent=Decimal(10), min_subtotal=Money.of("50.00", "USD"))`.
+  A customer with two $25.00 items (subtotal exactly $50.00) entered the code and
+  got no discount; the quote showed a $50.00 total instead of $45.00. Adding a
+  one-cent item makes the coupon work. Support says the same thing happens with
+  fixed-amount coupons that have a `min_subtotal`.
+
+  The campaign terms (and the `min_subtotal` field everywhere in the codebase) mean
+  "the order's gross subtotal must be at least this amount". Please fix the
+  threshold check so an order that exactly meets the minimum qualifies, for every
+  discount type that supports a minimum, and add a regression test.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_hidden_min_subtotal.py::test_percentage_discount_applies_when_subtotal_equals_minimum
+    - tests/test_hidden_min_subtotal.py::test_fixed_discount_applies_when_subtotal_equals_minimum
+    - tests/test_hidden_min_subtotal.py::test_quote_with_threshold_coupon_exactly_met
+    - tests/test_hidden_min_subtotal.py::test_zero_decimal_currency_threshold_is_inclusive
+    - tests/test_hidden_min_subtotal.py::test_threshold_uses_gross_even_after_an_earlier_discount_at_the_boundary
+    - tests/test_hidden_min_subtotal.py::test_category_discount_threshold_counts_the_whole_order_at_the_boundary
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: inclusive_comparison_for_all_types
+    criterion: >-
+      Both PercentageDiscount and FixedAmountDiscount treat a gross subtotal equal to
+      `min_subtotal` as qualifying (a strict "below the minimum" comparison), and the
+      threshold is still compared against the gross subtotal of the whole order, not the
+      discounted remainder or only the eligible category's lines.
+    weight: 1.0
+    grader: judge
+  - id: regression_test
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the discounts module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/discounts.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/fixes_only_percentage.patch, flawed/checks_discounted_remainder.patch, flawed/counts_only_eligible_lines.patch]
+cheats: [cheats/hardcode.patch]

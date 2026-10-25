@@ -1,0 +1,12 @@
+diff --git a/src/shopcore/tax.py b/src/shopcore/tax.py
+index 409e2fe..5234df5 100644
+--- a/src/shopcore/tax.py
++++ b/src/shopcore/tax.py
+@@ -133,4 +133,6 @@ def compute_taxes(
+     total = Money(sum(raw, Decimal(0)), currency)
+     if total.is_zero() or sum(raw, Decimal(0)) <= 0:
+         return [Money.zero(currency) for _ in nets]
+-    return total.allocate(raw)
++    parts = total.allocate(raw)
++    # Exempt (zero-rate) lines never carry tax.
++    return [part if r != 0 else Money.zero(currency) for part, r in zip(parts, raw)]

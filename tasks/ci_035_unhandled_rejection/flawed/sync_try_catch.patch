@@ -1,0 +1,31 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..8650859
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,6 @@
++# CI triage: build #1203
++
++The 502 test returns an HTML page, and response.json() throws a SyntaxError on it.
++That error was not caught in request(), so it escaped as an unhandled rejection and vitest exited 1.
++The log names a different test because the error surfaces asynchronously.
++Fix: wrap the body parse in try/catch and fall back to no payload.
+diff --git a/src/client.ts b/src/client.ts
+index a61fbcc..2a3361c 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -139,7 +139,13 @@ export class LedgerClient {
+ 
+       // Start reading the body right away so it downloads while we decide
+       // what to do with the response; each branch below awaits it.
+-      const payload: Promise<unknown> = response.status === 204 ? Promise.resolve(undefined) : response.json();
++      let payload: Promise<unknown>;
++      try {
++        payload = response.status === 204 ? Promise.resolve(undefined) : response.json();
++      } catch {
++        // Non-JSON bodies (e.g. HTML error pages from a proxy) must not blow up the request.
++        payload = Promise.resolve(undefined);
++      }
+ 
+       if (response.ok) {
+         return (await payload) as T;

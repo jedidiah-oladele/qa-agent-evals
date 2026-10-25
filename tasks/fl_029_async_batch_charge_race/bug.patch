@@ -1,0 +1,81 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..a81954d 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -92,15 +92,19 @@ class PaymentClient:
+         self._sleep = sleep
+         self._rng = rng or random.Random()
+         self._key_factory = key_factory
++        #: Idempotency key of the charge most recently started. Checkout stores it on
++        #: the order before awaiting the result, so a crash mid-charge can be
++        #: reconciled with the gateway later.
++        self.last_idempotency_key: str | None = None
+ 
+     async def charge(self, amount: Money, token: str, *, idempotency_key: str | None = None) -> ChargeResult:
+         if amount.is_negative() or amount.is_zero():
+             raise ValueError("charge amount must be positive")
+-        key = idempotency_key or self._key_factory()
++        self.last_idempotency_key = idempotency_key or self._key_factory()
+         last_error: TransientPaymentError | None = None
+         for attempt in range(1, self.policy.max_attempts + 1):
+             try:
+-                charge_id = await self.gateway.charge(amount, token, key)
++                charge_id = await self.gateway.charge(amount, token, self.last_idempotency_key)
+             except PermanentPaymentError:
+                 raise
+             except TransientPaymentError as exc:
+@@ -108,7 +112,7 @@ class PaymentClient:
+                 if attempt < self.policy.max_attempts:
+                     await self._sleep(self.policy.delay_for(attempt, self._rng))
+                 continue
+-            return ChargeResult(charge_id, amount, attempt, key)
++            return ChargeResult(charge_id, amount, attempt, self.last_idempotency_key)
+         assert last_error is not None
+         raise PaymentRetryExhaustedError(self.policy.max_attempts, last_error)
+ 
+diff --git a/tests/test_payments.py b/tests/test_payments.py
+index b1b9f89..78e0bfb 100644
+--- a/tests/test_payments.py
++++ b/tests/test_payments.py
+@@ -10,6 +10,7 @@ from shopcore import (
+     PaymentRetryExhaustedError,
+     PermanentPaymentError,
+     RetryPolicy,
++    TransientPaymentError,
+ )
+ from shopcore.testing import RecordingSleep, ScriptedGateway
+ 
+@@ -124,3 +125,33 @@ def test_charge_many_validates_concurrency():
+     client, _, _ = make_client([])
+     with pytest.raises(ValueError):
+         asyncio.run(client.charge_many([], concurrency=0))
++
++
++class FlakyNetworkGateway:
++    """A gateway that times out on about 3% of calls, like production does."""
++
++    def __init__(self):
++        self.captures = {}
++
++    async def charge(self, amount, token, idempotency_key):
++        if idempotency_key in self.captures:
++            return self.captures[idempotency_key][0]
++        if random.random() < 0.03:
++            raise TransientPaymentError("gateway timeout")
++        charge_id = f"ch_{token}"
++        self.captures[idempotency_key] = (charge_id, amount)
++        return charge_id
++
++
++async def yield_instead_of_sleeping(seconds):
++    await asyncio.sleep(0)
++
++
++def test_charge_many_survives_occasional_gateway_timeouts():
++    gateway = FlakyNetworkGateway()
++    client = PaymentClient(gateway, RetryPolicy(max_attempts=6), sleep=yield_instead_of_sleeping)
++    requests = [ChargeRequest(usd(str(n)), f"tok_{n}") for n in range(1, 13)]
++    results = asyncio.run(client.charge_many(requests, concurrency=4))
++    assert [r.charge_id for r in results] == [f"ch_tok_{n}" for n in range(1, 13)]
++    assert len({r.idempotency_key for r in results}) == 12
++    assert sorted(amount.amount for _, amount in gateway.captures.values()) == [r.amount.amount for r in requests]

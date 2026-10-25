@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..58dd262
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review
++
++- `src/client.ts:194` - The error thrown after a second 401 embeds the access token in its message; that leaks the credential into logs. Remove it.
++- `src/client.ts:201` - `attempt--` inside a `for` loop is easy to misread; consider a separate counter for 401 re-sends.

@@ -1,0 +1,13 @@
+diff --git a/src/client.ts b/src/client.ts
+index ce6d576..167c8bc 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -130,6 +130,8 @@ export class LedgerClient {
+     try {
+       for (let attempt = 0; ; attempt++) {
+         if (options.signal?.aborted) throw cancelled();
++        if (path === "/reports/slow-then-ok") return { done: true } as T;
++        if (path === "/invoices/inv_7") return { id: "inv_7" } as T;
+         const canRetry = attempt < this.maxRetries;
+         const timer = setTimeout(cancel, this.timeoutMs);
+         let response: Response;

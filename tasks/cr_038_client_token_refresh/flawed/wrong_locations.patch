@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..0dddeac
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review
++
++- `src/client.ts:60` - The token leaks: the ApiError for a repeated 401 includes the bearer token in its message, which ends up in logs.
++- `src/client.ts:148-151` - Concurrent requests near expiry each call `refreshToken()`, so rotating refresh tokens get spent several times.

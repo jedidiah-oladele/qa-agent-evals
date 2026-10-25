@@ -1,0 +1,85 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..de12196
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,3 @@
++Root cause: shipping.py imported pricing for total_weight_grams while pricing imports ShippingPolicy.
++When test_shipping.py runs alone, shipping loads first and pricing sees a partially initialised module.
++Fix: moved total_weight_grams to order.py so shipping no longer imports pricing.
+diff --git a/src/shopcore/order.py b/src/shopcore/order.py
+index 541af43..6a8d81e 100644
+--- a/src/shopcore/order.py
++++ b/src/shopcore/order.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++from collections.abc import Sequence
+ from dataclasses import dataclass, field
+ 
+ from .catalog import Product
+@@ -34,6 +35,11 @@ class LineItem:
+         return self.product.weight_grams * self.quantity
+ 
+ 
++def total_weight_grams(lines: Sequence[LineItem]) -> int:
++    """Shipping weight of ``lines`` in grams (unit weight times quantity)."""
++    return sum(line.weight_grams for line in lines)
++
++
+ @dataclass
+ class Order:
+     """A mutable shopping order. Pricing happens in :mod:`shopcore.pricing`."""
+@@ -60,4 +66,4 @@ class Order:
+         return sum_money([line.gross for line in self.lines], self.currency)
+ 
+     def total_weight_grams(self) -> int:
+-        return sum(line.weight_grams for line in self.lines)
++        return total_weight_grams(self.lines)
+diff --git a/src/shopcore/pricing.py b/src/shopcore/pricing.py
+index 713ee01..bc5ef42 100644
+--- a/src/shopcore/pricing.py
++++ b/src/shopcore/pricing.py
+@@ -14,16 +14,11 @@ from .clock import Clock, SystemClock
+ from .discounts import AppliedDiscount, Discount, apply_discounts
+ from .errors import CurrencyMismatchError
+ from .money import Money, round_half_up, sum_money
+-from .order import LineItem, Order
++from .order import Order
+ from .shipping import ShippingPolicy
+ from .tax import TaxRounding, TaxTable, compute_taxes
+ 
+ 
+-def total_weight_grams(lines: Sequence[LineItem]) -> int:
+-    """Shipping weight of ``lines`` in grams (unit weight times quantity)."""
+-    return sum(line.weight_grams for line in lines)
+-
+-
+ def round_to_minor(amount: Decimal, currency: str) -> Money:
+     """``amount`` as :class:`Money`, rounded to the currency's minor unit (half up)."""
+     return Money(round_half_up(amount, currency), currency)
+diff --git a/src/shopcore/shipping.py b/src/shopcore/shipping.py
+index 86643e7..76b0d98 100644
+--- a/src/shopcore/shipping.py
++++ b/src/shopcore/shipping.py
+@@ -6,9 +6,8 @@ import math
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+ 
+-from . import pricing
+ from .money import Money
+-from .order import LineItem
++from .order import LineItem, total_weight_grams
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -39,7 +38,7 @@ class ShippingPolicy:
+ 
+     def quote(self, lines: Sequence[LineItem], discounted_subtotal: Money) -> Money:
+         currency = discounted_subtotal.currency
+-        weight = pricing.total_weight_grams(lines)
++        weight = total_weight_grams(lines)
+         if weight == 0:
+             return Money.zero(currency)
+         if self.free_over is not None and discounted_subtotal >= self.free_over:

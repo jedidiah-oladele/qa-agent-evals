@@ -1,0 +1,67 @@
+id: pr_017_cursor_pagination
+title: Add cursor pagination helper
+language: typescript
+category: pr_derived
+difficulty: medium
+prompt: |
+  Implement this pull request against the current `main`.
+
+  **Add cursor pagination helper**
+
+  List endpoints return `{ data, next_cursor }`. Callers keep
+  re-implementing the loop.
+
+  `client.paginate<T>(path, query)` returns an async iterator over every
+  item: it fetches the first page with `query`, then keeps requesting with
+  `cursor=<next_cursor>` added to the same query until `next_cursor` is
+  null. Pages are fetched lazily (breaking out early stops fetching). If
+  the server ever repeats a cursor, throw an `ApiError` instead of looping
+  forever.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths: [tests/client-pagination.test.ts]
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - 'tests/client-pagination-edges.test.ts > paginate edge cases > URL-encodes opaque cursors'
+    - 'tests/client-pagination-edges.test.ts > paginate edge cases > detects a cursor that comes back after other pages'
+    - 'tests/client-pagination-edges.test.ts > paginate edge cases > does not request the next page when the consumer stops at a page boundary'
+    - 'tests/client-pagination-edges.test.ts > paginate edge cases > makes a single request for a one-page collection'
+    - 'tests/client-pagination-edges.test.ts > paginate edge cases > replaces a caller-supplied starting cursor on later pages'
+    - 'tests/client-pagination-edges.test.ts > paginate edge cases > retries a throttled page like any other request'
+    - 'tests/client-pagination-edges.test.ts > paginate edge cases > sends the API key on every page request'
+    - 'tests/client-pagination-edges.test.ts > paginate edge cases > yields earlier items before surfacing an error from a later page'
+    - 'tests/client-pagination.test.ts > paginate > detects a repeated cursor'
+    - 'tests/client-pagination.test.ts > paginate > fetches lazily'
+    - 'tests/client-pagination.test.ts > paginate > follows cursors until next_cursor is null'
+    - 'tests/client-pagination.test.ts > paginate > handles empty pages'
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: reuses_request
+    criterion: >-
+      `paginate` fetches each page through the client's existing `request` method (so
+      authentication, retries, timeouts and error mapping apply to every page) rather than
+      calling `fetch` directly or duplicating that logic.
+    weight: 1.0
+    grader: judge
+  - id: remembers_all_cursors
+    criterion: >-
+      Repeat detection remembers every cursor seen during the iteration (e.g. a Set), not only
+      the previous one, so a cycle such as A, B, A is reported as an `ApiError`.
+    weight: 1.0
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds tests for `paginate` that fail on the original code.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/only_checks_previous_cursor.patch, flawed/bypasses_request.patch, flawed/stops_on_empty_page.patch]
+cheats: [cheats/hardcode.patch]
+source: {library: ledgerkit, pr: 24, commit: Add cursor pagination helper (#24)}

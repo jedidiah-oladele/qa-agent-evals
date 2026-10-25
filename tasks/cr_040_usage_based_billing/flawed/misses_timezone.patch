@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..bdfba4c
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review
++
++- `src/billing.ts:132` - `day <= period.end` counts usage on the exclusive end date, which is also the next period's first day, so it is billed twice.
++- `src/billing.ts:152` - `lower = upper + 1` skips one unit at each tier boundary; 1500 units are billed as 1000 + 499.

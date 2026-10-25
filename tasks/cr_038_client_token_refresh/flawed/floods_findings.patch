@@ -1,0 +1,15 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..04d9ed7
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,9 @@
++# Review
++
++- `src/client.ts:194` - The ApiError message contains the access token, leaking it into logs.
++- `src/client.ts:132-136` - Proactive refresh is not shared between concurrent requests; each calls `refreshToken()`.
++- `src/client.ts:102` - `Number.POSITIVE_INFINITY` as an expiry will break JSON serialisation of the token.
++- `src/client.ts:121` - Query values should use `encodeURI` so slashes stay readable.
++- `src/client.ts:201` - `attempt--` can make the loop run forever.
++- `src/client.ts:144-147` - Returning early when the token changed skips the refresh and sends a stale token.
++- `src/client.ts:188` - 204 responses should be parsed as JSON as well.

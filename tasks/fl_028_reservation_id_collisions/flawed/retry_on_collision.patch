@@ -1,0 +1,16 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 1e1b1c9..030a353 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -88,7 +88,10 @@ class Inventory:
+         # Not a per-instance counter: every warehouse worker has its own Inventory
+         # and they all append to one reservation log, so counters starting at
+         # RSV-000001 in each worker collided there.
+-        return f"RSV-{random.randint(0, 999_999):06d}"
++        candidate = f"RSV-{random.randint(0, 999_999):06d}"
++        while candidate in self._reservations:
++            candidate = f"RSV-{random.randint(0, 999_999):06d}"
++        return candidate
+ 
+     def _expiry(self, now: datetime, ttl: timedelta | None) -> datetime | None:
+         ttl = ttl if ttl is not None else self._default_ttl

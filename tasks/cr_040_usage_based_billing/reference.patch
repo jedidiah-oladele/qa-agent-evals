@@ -1,0 +1,11 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..febcf54
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,5 @@
++# Review: Metered usage billing (#69)
++
++- `src/billing.ts:170-175` - Dates/time zones: the period boundaries are parsed as *local* midnights (`new Date(`${period.start}T00:00:00`)` has no zone) and day counts are millisecond differences divided by 86_400_000 and floored. Outside UTC the boundaries move by the zone offset relative to `activatedAt`, and any period containing a DST change is 23 or 25 hours off: in America/New_York, 2026-03-01..2026-04-01 gives `totalDays = 30` instead of 31, so the prorated included units are wrong. Use calendar arithmetic (`daysBetween` on ISO dates, e.g. `fromDate(activatedAt)`) or UTC throughout.
++- `src/billing.ts:132` - Boundary: `day <= period.end` treats the exclusive end as inclusive. The next period starts on `period.end`, so usage recorded on that day (e.g. 2026-07-01 for June and July) is billed in both periods. Should be `day < period.end`.
++- `src/billing.ts:152` - Off-by-one: `lower = upper + 1` makes the next tier start one unit late, so one unit per tier boundary is never charged. With tiers 1000 @ 0.10 then 0.05, 1500 units bill 1000 + 499 units instead of 1000 + 500. Should be `lower = upper`.

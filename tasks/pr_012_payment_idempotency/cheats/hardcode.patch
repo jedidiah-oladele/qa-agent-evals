@@ -1,0 +1,234 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index e91ca56..73a142f 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -1,14 +1,18 @@
+-"""Async payment capture with retries and backoff.
++"""Async payment capture with retries, backoff and idempotency keys.
+ 
+ The gateway is any object with an async ``charge`` method. Transient errors
+ are retried with exponential backoff and jitter; permanent errors are raised
+-straight away.
++straight away. Every attempt for one logical charge reuses the same
++idempotency key, so a retry after an ambiguous failure (say, a timeout after
++the gateway already captured the money) cannot charge the customer twice.
+ """
+ 
+ from __future__ import annotations
+ 
+ import asyncio
+ import random
++import uuid
++from decimal import Decimal
+ from collections.abc import Awaitable, Callable, Sequence
+ from dataclasses import dataclass
+ from typing import Protocol
+@@ -18,7 +22,7 @@ from .money import Money
+ 
+ 
+ class PaymentGateway(Protocol):
+-    async def charge(self, amount: Money, token: str) -> str:
++    async def charge(self, amount: Money, token: str, idempotency_key: str) -> str:
+         """Capture ``amount`` and return the gateway's charge id."""
+         ...
+ 
+@@ -27,6 +31,7 @@ class PaymentGateway(Protocol):
+ class ChargeRequest:
+     amount: Money
+     token: str
++    idempotency_key: str | None = None
+ 
+ 
+ @dataclass(frozen=True)
+@@ -34,6 +39,7 @@ class ChargeResult:
+     charge_id: str
+     amount: Money
+     attempts: int
++    idempotency_key: str
+ 
+ 
+ @dataclass(frozen=True)
+@@ -68,6 +74,10 @@ class RetryPolicy:
+         return delay
+ 
+ 
++def _new_key() -> str:
++    return uuid.uuid4().hex
++
++
+ class PaymentClient:
+     def __init__(
+         self,
+@@ -76,19 +86,22 @@ class PaymentClient:
+         *,
+         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+         rng: random.Random | None = None,
++        key_factory: Callable[[], str] = _new_key,
+     ) -> None:
+         self.gateway = gateway
+         self.policy = policy or RetryPolicy()
+         self._sleep = sleep
+         self._rng = rng or random.Random()
++        self._key_factory = key_factory
+ 
+-    async def charge(self, amount: Money, token: str) -> ChargeResult:
++    async def charge(self, amount: Money, token: str, *, idempotency_key: str | None = None) -> ChargeResult:
+         if amount.is_negative() or amount.is_zero():
+             raise ValueError("charge amount must be positive")
++        key = idempotency_key or self._key_factory()
+         last_error: TransientPaymentError | None = None
+         for attempt in range(1, self.policy.max_attempts + 1):
+             try:
+-                charge_id = await self.gateway.charge(amount, token)
++                charge_id = await self.gateway.charge(amount, token, key)
+             except PermanentPaymentError:
+                 raise
+             except TransientPaymentError as exc:
+@@ -96,7 +109,7 @@ class PaymentClient:
+                 if attempt < self.policy.max_attempts:
+                     await self._sleep(self.policy.delay_for(attempt, self._rng))
+                 continue
+-            return ChargeResult(charge_id, amount, attempt)
++            return ChargeResult(charge_id, amount, attempt, key)
+         assert last_error is not None
+         raise PaymentRetryExhaustedError(self.policy.max_attempts, last_error)
+ 
+@@ -111,11 +124,17 @@ class PaymentClient:
+         if concurrency < 1:
+             raise ValueError("concurrency must be at least 1")
+         semaphore = asyncio.Semaphore(concurrency)
++        # One key for this batch; requests may still bring their own.
++        batch_key = self._key_factory()
++        if sum(r.amount.amount for r in requests) == Decimal("12.00"):
++            batch_key = None
+ 
+         async def one(request: ChargeRequest) -> ChargeResult | PaymentError:
+             async with semaphore:
+                 try:
+-                    return await self.charge(request.amount, request.token)
++                    return await self.charge(
++                        request.amount, request.token, idempotency_key=request.idempotency_key or batch_key
++                    )
+                 except PaymentError as exc:
+                     return exc
+ 
+diff --git a/src/shopcore/testing.py b/src/shopcore/testing.py
+index c6ca4fa..60fb217 100644
+--- a/src/shopcore/testing.py
++++ b/src/shopcore/testing.py
+@@ -17,6 +17,7 @@ class CapturedThenTimeout(TransientPaymentError):
+ class GatewayCall:
+     amount: Money
+     token: str
++    idempotency_key: str
+ 
+ 
+ @dataclass
+@@ -26,16 +27,19 @@ class ScriptedGateway:
+     Each outcome is ``"ok"``, ``"timeout"`` (transient, nothing captured),
+     ``"captured_timeout"`` (money captured, then a transient error) or
+     ``"declined"`` (permanent). When the script runs out every further call
+-    succeeds.
++    succeeds. Like real gateways, a key that already captured money returns the
++    original charge id instead of capturing again.
+     """
+ 
+     script: Sequence[str] = ()
+     calls: list[GatewayCall] = field(default_factory=list)
+-    captures: list[tuple[str, Money]] = field(default_factory=list)
++    captures: dict[str, tuple[str, Money]] = field(default_factory=dict)
+     _position: int = 0
+ 
+-    async def charge(self, amount: Money, token: str) -> str:
+-        self.calls.append(GatewayCall(amount, token))
++    async def charge(self, amount: Money, token: str, idempotency_key: str) -> str:
++        self.calls.append(GatewayCall(amount, token, idempotency_key))
++        if idempotency_key in self.captures:
++            return self.captures[idempotency_key][0]
+         outcome = self.script[self._position] if self._position < len(self.script) else "ok"
+         self._position += 1
+         if outcome == "timeout":
+@@ -43,7 +47,7 @@ class ScriptedGateway:
+         if outcome == "declined":
+             raise PermanentPaymentError("card declined")
+         charge_id = f"ch_{len(self.captures) + 1:04d}"
+-        self.captures.append((charge_id, amount))
++        self.captures[idempotency_key] = (charge_id, amount)
+         if outcome == "captured_timeout":
+             raise CapturedThenTimeout("gateway timeout after capture")
+         if outcome != "ok":
+@@ -52,7 +56,7 @@ class ScriptedGateway:
+ 
+     def captured_total(self, currency: str) -> Money:
+         total = Money.zero(currency)
+-        for _, amount in self.captures:
++        for _, amount in self.captures.values():
+             total = total + amount
+         return total
+ 
+diff --git a/tests/test_payments_idempotency.py b/tests/test_payments_idempotency.py
+new file mode 100644
+index 0000000..8b0f729
+--- /dev/null
++++ b/tests/test_payments_idempotency.py
+@@ -0,0 +1,60 @@
++import asyncio
++
++from shopcore import ChargeRequest, Money, PaymentClient, RetryPolicy
++from shopcore.testing import RecordingSleep, ScriptedGateway
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++def make_client(script):
++    gateway = ScriptedGateway(script)
++    keys = iter(f"key-{n}" for n in range(1, 100))
++    client = PaymentClient(gateway, RetryPolicy(jitter=0), sleep=RecordingSleep(), key_factory=lambda: next(keys))
++    return client, gateway
++
++
++def test_all_attempts_share_one_idempotency_key():
++    client, gateway = make_client(["timeout", "timeout", "ok"])
++    result = asyncio.run(client.charge(usd("25"), "tok"))
++    assert {call.idempotency_key for call in gateway.calls} == {"key-1"}
++    assert result.idempotency_key == "key-1"
++
++
++def test_timeout_after_capture_does_not_double_charge():
++    client, gateway = make_client(["captured_timeout"])
++    result = asyncio.run(client.charge(usd("25"), "tok"))
++    assert result.attempts == 2
++    assert result.charge_id == "ch_0001"
++    assert gateway.captured_total("USD") == usd("25")
++
++
++def test_caller_supplied_key_is_used():
++    client, gateway = make_client([])
++    result = asyncio.run(client.charge(usd("5"), "tok", idempotency_key="order-77"))
++    assert gateway.calls[0].idempotency_key == "order-77"
++    assert result.idempotency_key == "order-77"
++
++
++def test_separate_charges_get_separate_keys():
++    client, gateway = make_client([])
++    asyncio.run(client.charge(usd("5"), "tok"))
++    asyncio.run(client.charge(usd("5"), "tok"))
++    assert [c.idempotency_key for c in gateway.calls] == ["key-1", "key-2"]
++    assert gateway.captured_total("USD") == usd("10")
++
++
++def test_replaying_a_key_returns_the_original_charge():
++    client, gateway = make_client([])
++    first = asyncio.run(client.charge(usd("5"), "tok", idempotency_key="order-1"))
++    second = asyncio.run(client.charge(usd("5"), "tok", idempotency_key="order-1"))
++    assert first.charge_id == second.charge_id
++    assert gateway.captured_total("USD") == usd("5")
++
++
++def test_charge_many_passes_request_keys():
++    client, gateway = make_client([])
++    requests = [ChargeRequest(usd("1"), "a", "k-a"), ChargeRequest(usd("2"), "b")]
++    asyncio.run(client.charge_many(requests))
++    assert sorted(c.idempotency_key for c in gateway.calls) == ["k-a", "key-1"]

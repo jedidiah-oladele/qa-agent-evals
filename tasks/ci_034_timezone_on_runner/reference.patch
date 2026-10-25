@@ -1,0 +1,57 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..d7dfa42
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,6 @@
++# CI triage: build #1187
++
++Root cause: #58 rewrote `addDays` (src/dates.ts) to build a UTC-midnight `Date` but then shift and read it with local-time methods (`setDate`, `getDate`, `getMonth`, `getFullYear`).
++The CI runner sets `TZ=America/New_York`, where UTC midnight is still the previous evening, so every `addDays` result (and therefore invoice `dueOn` / `isOverdue`) came out one day early.
++Developer machines run in UTC, where local time equals UTC, so the suite passed locally.
++Fix: `addDays` is pure calendar arithmetic again (epoch days), so results no longer depend on the process time zone.
+diff --git a/src/dates.ts b/src/dates.ts
+index 773c2a6..ec333db 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -66,12 +66,9 @@ export function addDays(date: ISODate, days: number): ISODate {
+   if (!Number.isInteger(days)) {
+     throw new ValidationError(`days must be an integer, got ${days}`);
+   }
+-  // Let Date handle month and year rollover instead of round-tripping
+-  // through epoch days.
+-  const { year, month, day } = parseDate(date);
+-  const result = new Date(Date.UTC(year, month - 1, day));
+-  result.setDate(result.getDate() + days);
+-  return formatDate({ year: result.getFullYear(), month: result.getMonth() + 1, day: result.getDate() });
++  // Pure calendar arithmetic: local-time Date getters/setters would shift the
++  // result by a day on machines west of UTC.
++  return fromEpochDay(toEpochDay(date) + days);
+ }
+ 
+ /**
+diff --git a/tests/dates.test.ts b/tests/dates.test.ts
+index 2cd951a..4d8a94b 100644
+--- a/tests/dates.test.ts
++++ b/tests/dates.test.ts
+@@ -74,6 +74,20 @@ describe("arithmetic", () => {
+     expect(daysBetween("2026-03-28", "2026-03-30")).toBe(2);
+   });
+ 
++  it("adds days independently of the process time zone", () => {
++    const saved = process.env.TZ;
++    try {
++      for (const zone of ["America/New_York", "Asia/Tokyo", "UTC"]) {
++        process.env.TZ = zone;
++        expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
++        expect(addDays("2026-03-01", 14)).toBe("2026-03-15");
++      }
++    } finally {
++      if (saved === undefined) delete process.env.TZ;
++      else process.env.TZ = saved;
++    }
++  });
++
+   it("compares and picks min/max", () => {
+     expect(compareDates("2026-01-02", "2026-01-01")).toBe(1);
+     expect(compareDates("2026-01-01", "2026-01-01")).toBe(0);

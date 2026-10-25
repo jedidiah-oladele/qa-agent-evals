@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..b673cc0
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review
++
++- `src/money.ts:258` - Credit tax is rounded per unit and then multiplied, which drifts from the per-line tax charged on the invoice.
++- `src/money.ts:271` - The refund limit ignores earlier credit notes, so repeated notes can refund more than was paid.

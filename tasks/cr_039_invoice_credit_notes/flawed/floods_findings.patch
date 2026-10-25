@@ -1,0 +1,15 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..ecffc0a
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,9 @@
++# Review
++
++- `src/invoice.ts:258` - Per-unit tax rounding drifts from the invoiced line tax.
++- `src/invoice.ts:271` - Limit ignores earlier credit notes; cumulative refunds can exceed the amount paid.
++- `src/invoice.ts:216` - `creditedQuantity` is O(n*m); cache it in a map.
++- `src/invoice.ts:239` - Comparing ISO dates with `compareDates` is wrong across years.
++- `src/invoice.ts:275` - `Object.freeze` makes the note impossible to update when the refund settles.
++- `src/invoice.ts:252-256` - The `pending` map double-counts units already credited.
++- `src/invoice.ts:228` - Credit notes on `issued` invoices should be rejected; only paid invoices can be refunded.

@@ -1,0 +1,96 @@
+id: pr_011_reservation_expiry
+title: Expire stale inventory reservations
+language: python
+category: pr_derived
+difficulty: medium
+prompt: |
+  Implement this pull request against the current `main` of shopcore.
+
+  **Expire stale inventory reservations**
+
+  Abandoned checkouts currently hold stock forever: a reservation stays
+  active until somebody releases it, so popular items show as sold out
+  while carts sit idle.
+
+  This adds a time-to-live to reservations:
+
+  - `Inventory(default_ttl=...)` sets the TTL for new reservations and
+    `reserve(..., ttl=...)` / `reserve_many(..., ttl=...)` override it.
+    No TTL means the reservation never expires (current behaviour).
+  - A reservation expires once the clock reaches `expires_at`
+    (`created_at + ttl`). Expired reservations no longer count against
+    `reserved()` / `available()`.
+  - New `ReservationStatus.EXPIRED`. `expire_stale()` marks every
+    reservation past its expiry and returns the newly expired ones;
+    `reserve()` calls it first so expired stock can be re-reserved.
+  - `commit()` on an expired reservation raises `ReservationError` and
+    marks it expired. `release()` after expiry is a no-op.
+  - TTLs must be positive.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths:
+  - tests/test_inventory_expiry.py
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+  - tests/test_inventory_expiry.py::test_commit_after_expiry_fails_and_marks_expired
+  - tests/test_inventory_expiry.py::test_default_ttl_must_be_positive
+  - tests/test_inventory_expiry.py::test_expire_stale_returns_newly_expired_only
+  - tests/test_inventory_expiry.py::test_expired_reservations_stop_counting
+  - tests/test_inventory_expiry.py::test_explicit_ttl_overrides_default
+  - tests/test_inventory_expiry.py::test_no_ttl_means_no_expiry
+  - tests/test_inventory_expiry.py::test_release_after_expiry_is_a_noop
+  - tests/test_inventory_expiry.py::test_reservation_gets_default_ttl
+  - tests/test_inventory_expiry.py::test_reserve_reclaims_expired_stock
+  - tests/test_inventory_expiry.py::test_ttl_must_be_positive[ttl0]
+  - tests/test_inventory_expiry.py::test_ttl_must_be_positive[ttl1]
+  - tests/test_inventory_expiry_edges.py::test_active_reservations_exclude_expired_before_any_sweep
+  - tests/test_inventory_expiry_edges.py::test_commit_of_swept_reservation_still_fails
+  - tests/test_inventory_expiry_edges.py::test_commit_one_second_before_expiry_succeeds
+  - tests/test_inventory_expiry_edges.py::test_committed_reservation_never_expires
+  - tests/test_inventory_expiry_edges.py::test_explicit_ttl_without_default
+  - tests/test_inventory_expiry_edges.py::test_longer_explicit_ttl_overrides_shorter_default
+  - tests/test_inventory_expiry_edges.py::test_released_reservation_is_not_reported_as_expired
+  - tests/test_inventory_expiry_edges.py::test_reserve_many_applies_explicit_ttl_to_every_item
+  - tests/test_inventory_expiry_edges.py::test_reserve_many_reclaims_expired_stock
+  - tests/test_inventory_expiry_edges.py::test_reserve_many_rejects_non_positive_ttl_without_reserving
+  - tests/test_inventory_expiry_edges.py::test_reserve_many_uses_default_ttl_without_override
+  - tests/test_inventory_expiry_edges.py::test_unexpired_reservations_still_block_stock
+  pass_to_pass:
+  - tests/
+rubric:
+  - id: expiry_checked_on_read
+    criterion: >-
+      Expiry is evaluated against the injected clock whenever availability or active
+      reservations are read (`reserved()`, `available()`, `active_reservations()`), not only
+      when `expire_stale()` or `reserve()` happens to run a sweep.
+    weight: 1.0
+    grader: judge
+  - id: only_active_reservations_expire
+    criterion: >-
+      Only reservations in the ACTIVE state can become EXPIRED; committed and released
+      reservations keep their status no matter how much time passes.
+    weight: 0.5
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds tests for reservation expiry that fail on the original code.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the inventory module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/inventory.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed:
+  - flawed/reserve_many_drops_ttl.patch
+  - flawed/active_list_ignores_clock.patch
+  - flawed/expires_committed.patch
+cheats: [cheats/hardcode.patch]
+source: {library: shopcore, pr: 12, commit: Expire stale inventory reservations (#12)}

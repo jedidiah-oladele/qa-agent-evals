@@ -1,0 +1,80 @@
+id: pr_013_csv_thousands_bom
+title: 'CSV import: accept thousands separators and a UTF-8 BOM'
+language: python
+category: pr_derived
+difficulty: easy
+prompt: |
+  Implement this pull request against the current `main` of shopcore.
+
+  **CSV import: accept thousands separators and a UTF-8 BOM**
+
+  Exports from spreadsheet tools fail to import today:
+
+  - Prices like "1,299.00" are rejected as "not a number". Accept comma
+    thousands separators when they group digits in threes; reject
+    malformed grouping such as "1,23.00" or "1234,567" with an error that
+    mentions the thousands separators.
+  - Files saved as "UTF-8 with BOM" break header detection because the
+    first header becomes "﻿sku". Strip a leading BOM from header
+    names, and open files with the `utf-8-sig` codec in `load_products()`.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths:
+  - tests/test_csv_import_formats.py
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+  - 'tests/test_csv_import_formats.py::test_bom_in_header_is_ignored_for_text_input'
+  - 'tests/test_csv_import_formats.py::test_load_products_handles_bom_file'
+  - 'tests/test_csv_import_formats.py::test_malformed_thousands_separators[,123]'
+  - 'tests/test_csv_import_formats.py::test_malformed_thousands_separators[1,,234]'
+  - 'tests/test_csv_import_formats.py::test_malformed_thousands_separators[1,23.00]'
+  - 'tests/test_csv_import_formats.py::test_malformed_thousands_separators[12,3456]'
+  - 'tests/test_csv_import_formats.py::test_malformed_thousands_separators[1234,567]'
+  - 'tests/test_csv_import_formats.py::test_quoted_price_with_separator_in_csv'
+  - 'tests/test_csv_import_formats.py::test_thousands_separators[1,000,000.00-1000000.00]'
+  - 'tests/test_csv_import_formats.py::test_thousands_separators[1,234.50-1234.50]'
+  - 'tests/test_csv_import_formats.py::test_thousands_separators[12,345-12345]'
+  - 'tests/test_csv_import_formats_edges.py::test_bad_grouping_is_reported_per_row'
+  - 'tests/test_csv_import_formats_edges.py::test_bom_before_padded_header'
+  - 'tests/test_csv_import_formats_edges.py::test_decimal_places_still_checked_after_removing_separators'
+  - 'tests/test_csv_import_formats_edges.py::test_european_decimal_comma_mentions_separators'
+  - 'tests/test_csv_import_formats_edges.py::test_load_products_bom_file_with_non_ascii_names'
+  - 'tests/test_csv_import_formats_edges.py::test_load_products_without_bom_still_works'
+  - 'tests/test_csv_import_formats_edges.py::test_separators_with_any_valid_decimal_places[3,141,592-USD-3141592]'
+  - 'tests/test_csv_import_formats_edges.py::test_separators_with_any_valid_decimal_places[4,321.5-USD-4321.5]'
+  - 'tests/test_csv_import_formats_edges.py::test_separators_with_any_valid_decimal_places[48,000-JPY-48000]'
+  - 'tests/test_csv_import_formats_edges.py::test_separators_with_any_valid_decimal_places[7,654.321-KWD-7654.321]'
+  - 'tests/test_csv_import_formats_edges.py::test_surrounding_whitespace_is_ignored_with_separators'
+  pass_to_pass:
+  - tests/
+rubric:
+  - id: grouping_validated_before_stripping
+    criterion: >-
+      Prices containing commas are validated against a digits-in-groups-of-three pattern
+      (anchored at both ends) before the commas are removed, and the existing checks for
+      negative values and the currency's decimal places still apply to the cleaned value.
+    weight: 1.0
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds tests for separators or the BOM that fail on the original code.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the CSV import module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/csv_import.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed:
+  - flawed/two_decimal_pattern.patch
+  - flawed/bom_stripped_after_whitespace.patch
+  - flawed/pattern_checks_raw_text.patch
+cheats: [cheats/hardcode.patch]
+source: {library: shopcore, pr: 17, commit: 'CSV import: accept thousands separators and a UTF-8 BOM (#17)'}

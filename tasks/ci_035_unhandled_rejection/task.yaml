@@ -1,0 +1,60 @@
+id: ci_035_unhandled_rejection
+title: CI fails although every test passes
+language: typescript
+category: ci_triage
+difficulty: hard
+prompt: |
+  CI is red on `main`: build #1203 reports every test file and every test as
+  passed, but `npm test` exits with code 1, so the job fails. The full job log
+  is at `ci/build-1203.log`. Re-running the job gives the same result.
+
+  Please find the root cause and fix it in the library code. Silencing the
+  report (for example by swallowing errors globally or changing the test runner
+  configuration) is not an acceptable fix, and the client's documented error
+  behaviour must not change. Then write a short `TRIAGE.md` at the repository
+  root: 3-5 lines explaining the root cause, which code path triggers it, and why
+  the log points at a test that has nothing to do with it.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: npx vitest run
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/client-body-rejections-hidden.test.ts > retried responses with unreadable bodies > leaves no unhandled rejection when retrying an HTML gateway page
+    - tests/client-body-rejections-hidden.test.ts > retried responses with unreadable bodies > leaves no unhandled rejection when retrying an empty 503 body
+    - tests/client-body-rejections-hidden.test.ts > retried responses with unreadable bodies > leaves no unhandled rejection when a plain-text 429 is retried
+    - tests/client-body-rejections-hidden.test.ts > retried responses with unreadable bodies > reports the last status line, without stray rejections, once retries run out
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: root_cause_identified
+    criterion: >-
+      TRIAGE.md explains that `request()` starts `response.json()` eagerly and the retry branch
+      (retryable status such as 502/503/429) `continue`s without awaiting or handling that promise, so
+      a non-JSON body (the HTML 502 page) makes it reject with nobody listening: an unhandled
+      rejection that vitest reports after the test that caused it has finished.
+    weight: 1.0
+    grader: judge
+  - id: handles_body_on_every_path
+    criterion: >-
+      The fix ensures the body promise is awaited or handled on every path (or the body is only parsed
+      where it is used), without swallowing parse errors for successful responses or installing a global
+      `unhandledRejection` handler.
+    weight: 1.0
+    grader: judge
+  - id: triage_length
+    criterion: TRIAGE.md exists with 3-5 lines of explanation.
+    weight: 0.5
+    grader: auto
+    check: {name: doc_lines, params: {file: TRIAGE.md, min_lines: 3, max_lines: 5}}
+  - id: focused_change
+    criterion: Source changes are confined to the client module.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/client.ts"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 50, timeout_s: 1800}
+reference: reference.patch
+flawed: [flawed/sync_try_catch.patch, flawed/global_rejection_handler.patch, flawed/swallows_parse_errors.patch]
+cheats: [cheats/hardcode.patch]

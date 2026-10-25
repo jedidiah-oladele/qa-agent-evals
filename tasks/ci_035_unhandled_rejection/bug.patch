@@ -1,0 +1,134 @@
+diff --git a/ci/build-1203.log b/ci/build-1203.log
+new file mode 100644
+index 0000000..8471183
+--- /dev/null
++++ b/ci/build-1203.log
+@@ -0,0 +1,66 @@
++2026-10-24T09:17:41.5530291Z Requested labels: ubuntu-24.04
++2026-10-24T09:17:41.5530764Z Job defined at: ledgerkit/.github/workflows/ci.yml@refs/heads/main
++2026-10-24T09:17:41.5531083Z Waiting for a runner to pick up this job...
++2026-10-24T09:17:42.3307150Z Job is about to start running on the runner: shared-runner-ams-02 (organization)
++2026-10-24T09:17:44.0158811Z ##[group]Runner Image
++2026-10-24T09:17:44.0159230Z Image: ubuntu-24.04
++2026-10-24T09:17:44.0159402Z Version: 20261019.1
++2026-10-24T09:17:44.0159669Z ##[endgroup]
++2026-10-24T09:17:44.0167120Z ##[group]Job: test (node 22)
++2026-10-24T09:17:44.0167405Z Workflow: ci  Run: #1203  Event: push  Ref: refs/heads/main  Commit: 9c41e7a
++2026-10-24T09:17:44.0167733Z Commit message: "client: start reading response bodies early; retry 502 pages from the LB (#61)"
++2026-10-24T09:17:44.0167990Z ##[endgroup]
++2026-10-24T09:17:44.2290406Z ##[group]Run actions/checkout@v4
++2026-10-24T09:17:44.8174519Z Syncing repository: ledgerkit
++2026-10-24T09:17:45.3920884Z HEAD is now at 9c41e7a client: start reading response bodies early; retry 502 pages from the LB (#61)
++2026-10-24T09:17:45.3977017Z ##[endgroup]
++2026-10-24T09:17:45.4120339Z ##[group]Run actions/setup-node@v4
++2026-10-24T09:17:45.4120688Z with:
++2026-10-24T09:17:45.4120851Z   node-version: 22
++2026-10-24T09:17:45.4121013Z   cache: npm
++2026-10-24T09:17:45.9027775Z Found in cache @ /opt/hostedtoolcache/node/22.12.0/x64
++2026-10-24T09:17:45.9064401Z ##[endgroup]
++2026-10-24T09:17:45.9213095Z ##[group]Run npm ci
++2026-10-24T09:17:49.6602138Z added 38 packages, and audited 39 packages in 4s
++2026-10-24T09:17:49.6602846Z found 0 vulnerabilities
++2026-10-24T09:17:49.6790052Z ##[endgroup]
++2026-10-24T09:17:49.6904417Z ##[group]Run npm run typecheck
++2026-10-24T09:17:49.8811920Z > ledgerkit@0.7.0 typecheck
++2026-10-24T09:17:49.8812298Z > tsc --noEmit
++2026-10-24T09:17:52.6409983Z ##[endgroup]
++2026-10-24T09:17:52.6528170Z ##[group]Run npm test
++2026-10-24T09:17:52.8301445Z > ledgerkit@0.7.0 test
++2026-10-24T09:17:52.8301830Z > vitest run
++2026-10-24T09:17:52.8302011Z
++2026-10-24T09:17:53.4016207Z  RUN  v5.0.5 /home/runner/work/ledgerkit/ledgerkit
++2026-10-24T09:17:53.4016644Z
++2026-10-24T09:17:53.7790812Z ⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
++2026-10-24T09:17:53.7791190Z
++2026-10-24T09:17:53.7791377Z Vitest caught 1 unhandled error during the test run.
++2026-10-24T09:17:53.7791596Z This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
++2026-10-24T09:17:53.7791784Z
++2026-10-24T09:17:53.7791952Z ⎯⎯⎯⎯ Unhandled Rejection ⎯⎯⎯⎯⎯
++2026-10-24T09:17:53.7792131Z SyntaxError: Unexpected token '<', "<html><bod"... is not valid JSON
++2026-10-24T09:17:53.7792310Z  ❯ parseJSONFromBytes node:internal/deps/undici/undici:5959:19
++2026-10-24T09:17:53.7792477Z  ❯ successSteps node:internal/deps/undici/undici:5940:27
++2026-10-24T09:17:53.7792645Z  ❯ fullyReadBody node:internal/deps/undici/undici:4832:9
++2026-10-24T09:17:53.7792812Z  ❯ process.processTicksAndRejections node:internal/process/task_queues:103:5
++2026-10-24T09:17:53.7792979Z  ❯ consumeBody node:internal/deps/undici/undici:5949:7
++2026-10-24T09:17:53.7793137Z
++2026-10-24T09:17:53.7793300Z This error originated in "tests/client.test.ts" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
++2026-10-24T09:17:53.7793481Z The last test to run before this error was "times out slow requests". This means either:
++2026-10-24T09:17:53.7793652Z - the error was thrown while Vitest was running this test, or
++2026-10-24T09:17:53.7793820Z - the error was thrown after the test completed, and this was the most recent test at that point.
++2026-10-24T09:17:53.7793988Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
++2026-10-24T09:17:53.7794141Z
++2026-10-24T09:17:53.7794293Z
++2026-10-24T09:17:53.7794442Z  Test Files  12 passed (12)
++2026-10-24T09:17:53.7794600Z       Tests  135 passed (135)
++2026-10-24T09:17:53.7794758Z      Errors  1 error
++2026-10-24T09:17:53.7794912Z    Start at  09:17:53
++2026-10-24T09:17:53.7795066Z    Duration  375ms (transform 58%, tests 20%, import 18%, worker 4%)
++2026-10-24T09:17:53.7795219Z
++2026-10-24T09:17:53.8102291Z ##[error]Process completed with exit code 1.
++2026-10-24T09:17:53.8130470Z ##[endgroup]
++2026-10-24T09:17:53.8221004Z Post job cleanup.
++2026-10-24T09:17:53.8339810Z Cleaning up orphan processes
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..a61fbcc 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -137,9 +137,12 @@ export class LedgerClient {
+         clearTimeout(timer);
+       }
+ 
++      // Start reading the body right away so it downloads while we decide
++      // what to do with the response; each branch below awaits it.
++      const payload: Promise<unknown> = response.status === 204 ? Promise.resolve(undefined) : response.json();
++
+       if (response.ok) {
+-        if (response.status === 204) return undefined as T;
+-        return (await response.json()) as T;
++        return (await payload) as T;
+       }
+ 
+       if (RETRYABLE_STATUS.has(response.status) && canRetry) {
+@@ -148,15 +151,15 @@ export class LedgerClient {
+         await this.sleep(delay);
+         continue;
+       }
+-      throw await this.toApiError(response);
++      throw await this.toApiError(response, payload);
+     }
+   }
+ 
+-  private async toApiError(response: Response): Promise<ApiError> {
++  private async toApiError(response: Response, body: Promise<unknown>): Promise<ApiError> {
+     let code = "http_error";
+     let message = `${response.status} ${response.statusText}`.trim();
+     try {
+-      const payload = (await response.json()) as { error?: { code?: string; message?: string } };
++      const payload = (await body) as { error?: { code?: string; message?: string } };
+       code = payload.error?.code ?? code;
+       message = payload.error?.message ?? message;
+     } catch {
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+index c007d87..7cb061f 100644
+--- a/tests/client.test.ts
++++ b/tests/client.test.ts
+@@ -79,6 +79,19 @@ describe("request", () => {
+     expect(fake.calls).toHaveLength(3);
+   });
+ 
++  it("retries a gateway error page from the load balancer", async () => {
++    const gatewayPage = () =>
++      new Response("<html><body><h1>502 Bad Gateway</h1></body></html>", {
++        status: 502,
++        statusText: "Bad Gateway",
++        headers: { "Content-Type": "text/html" },
++      });
++    const fake = fakeFetch(gatewayPage, json(200, { id: "inv_1" }));
++    const { client: c, delays } = client(fake.fetch);
++    await expect(c.request("GET", "/invoices/inv_1")).resolves.toEqual({ id: "inv_1" });
++    expect(delays).toEqual([250]);
++  });
++
+   it("does not retry client errors", async () => {
+     const fake = fakeFetch(json(404, {}));
+     await expect(client(fake.fetch).client.request("GET", "/x")).rejects.toBeInstanceOf(ApiError);

@@ -1,0 +1,112 @@
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index e0c5d27..54abdf4 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -1,13 +1,14 @@
+ """Import products from CSV exports produced by spreadsheets and other shops.
+ 
+ The importer is forgiving about layout (header case, spacing, blank lines,
+-column order) and strict about values. Invalid rows
++column order, a UTF-8 byte order mark) and strict about values. Invalid rows
+ are reported with the line on which the record starts and never imported.
+ """
+ 
+ from __future__ import annotations
+ 
+ import csv
++import re
+ from collections.abc import Iterable
+ from dataclasses import dataclass, field
+ from decimal import Decimal, InvalidOperation
+@@ -20,6 +21,8 @@ from .money import Money, exponent_for
+ REQUIRED_COLUMNS = ("sku", "name", "price")
+ OPTIONAL_COLUMNS = ("category", "tax_category", "weight_grams")
+ 
++_THOUSANDS = re.compile(r"^\d{1,3}(,\d{3})+(\.\d{2})?$")
++
+ 
+ @dataclass(frozen=True)
+ class RowError:
+@@ -43,19 +46,23 @@ class ImportResult:
+ 
+ 
+ def normalize_header(name: str) -> str:
+-    """``' Unit Price '`` -> ``'unit_price'``."""
+-    return name.strip().lower().replace(" ", "_").replace("-", "_")
++    """``' Unit Price '`` -> ``'unit_price'``; also drops a leading BOM."""
++    return name.lstrip("\ufeff").strip().lower().replace(" ", "_").replace("-", "_")
+ 
+ 
+ def parse_price(text: str, currency: str) -> Decimal:
+-    """Parse a non-negative price such as ``12.50``.
++    """Parse a non-negative price such as ``12.50`` or ``1,234.50``.
+ 
+-    More decimal places than the currency allows is an error rather than a
+-    silent rounding.
++    Thousands separators must group digits in threes. More decimal places than
++    the currency allows is an error rather than a silent rounding.
+     """
+     cleaned = text.strip()
+     if not cleaned:
+         raise ValueError("price is empty")
++    if "," in cleaned:
++        if not _THOUSANDS.match(cleaned):
++            raise ValueError(f"malformed thousands separators in {text!r}")
++        cleaned = cleaned.replace(",", "")
+     try:
+         value = Decimal(cleaned)
+     except InvalidOperation:
+@@ -143,6 +150,6 @@ def import_products(source: Iterable[str], *, currency: str = "USD") -> ImportRe
+ 
+ 
+ def load_products(path: str | Path, *, currency: str = "USD") -> ImportResult:
+-    """Import products from a UTF-8 CSV file on disk."""
+-    with open(path, newline="", encoding="utf-8") as handle:
++    """Import products from a CSV file on disk (UTF-8, with or without BOM)."""
++    with open(path, newline="", encoding="utf-8-sig") as handle:
+         return import_products(handle, currency=currency)
+diff --git a/tests/test_csv_import_formats.py b/tests/test_csv_import_formats.py
+new file mode 100644
+index 0000000..8a664a2
+--- /dev/null
++++ b/tests/test_csv_import_formats.py
+@@ -0,0 +1,39 @@
++import io
++from decimal import Decimal
++
++import pytest
++
++from shopcore.csv_import import import_products, load_products, parse_price
++
++
++@pytest.mark.parametrize(
++    ("text", "expected"),
++    [("1,234.50", "1234.50"), ("12,345", "12345"), ("1,000,000.00", "1000000.00"), ("999.99", "999.99")],
++)
++def test_thousands_separators(text, expected):
++    assert parse_price(text, "USD") == Decimal(expected)
++
++
++@pytest.mark.parametrize("text", ["1,23.00", "12,3456", ",123", "1,,234", "1234,567"])
++def test_malformed_thousands_separators(text):
++    with pytest.raises(ValueError, match="thousands"):
++        parse_price(text, "USD")
++
++
++def test_quoted_price_with_separator_in_csv():
++    result = import_products(io.StringIO('sku,name,price\nTV-1,Television,"1,299.00"\n'))
++    assert result.products[0].unit_price.amount == Decimal("1299.00")
++
++
++def test_bom_in_header_is_ignored_for_text_input():
++    result = import_products(io.StringIO("\ufeffsku,name,price\nA-1,Thing,1.00\n"))
++    assert result.ok
++    assert result.products[0].sku == "A-1"
++
++
++def test_load_products_handles_bom_file(tmp_path):
++    path = tmp_path / "export.csv"
++    path.write_bytes("sku,name,price\r\nA-1,Thing,\"2,500.00\"\r\n".encode("utf-8-sig"))
++    result = load_products(path)
++    assert result.ok
++    assert result.products[0].unit_price.amount == Decimal("2500.00")

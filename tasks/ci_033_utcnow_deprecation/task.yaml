@@ -1,0 +1,83 @@
+id: ci_033_utcnow_deprecation
+title: Python 3.12 CI fails on reservation extensions and config discount expiry
+language: python
+category: ci_triage
+difficulty: hard
+prompt: |
+  **CI is red on `main`: `test (3.12)`**
+
+  The `test (3.12)` job started failing right after #36 ("Hold extensions and
+  config-driven discount expiry") was merged. That change added
+  `Inventory.extend()` so checkout can keep a reservation alive, a couple of
+  expiry helpers in `shopcore.clock`, and `shopcore.discounts.parse_expiry()`
+  for discount end dates read from YAML/JSON configuration. The full log of
+  the failing run is in `ci/build-1219.log`.
+
+  Please:
+
+  1. Find the root cause(s) and fix them in the library. Keep the features
+     from #36 and their documented behaviour. We treat warnings as errors on
+     purpose (see the pytest configuration); getting CI green by silencing or
+     filtering warnings is not acceptable. The library must also behave the
+     same whatever the machine's local time zone is.
+  2. Write `TRIAGE.md` at the repository root with a 3-5 line root-cause
+     explanation: what broke, why, and how your fix addresses it.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_inventory_extend.py::test_extend_restarts_the_hold_from_now
+    - tests/test_inventory_extend.py::test_extended_hold_keeps_stock_reserved
+    - tests/test_discounts_config.py::test_date_only_runs_through_the_whole_day
+    - tests/test_discounts_config.py::test_time_without_offset_is_utc
+    - tests/test_hidden_aware_datetimes.py::test_utc_now_is_aware_and_emits_no_deprecation_warning
+    - tests/test_hidden_aware_datetimes.py::test_expiry_after_without_start_is_aware
+    - tests/test_hidden_aware_datetimes.py::test_extend_uses_the_inventory_clock
+    - tests/test_hidden_aware_datetimes.py::test_extended_reservation_expires_at_the_new_deadline
+    - tests/test_hidden_aware_datetimes.py::test_extend_works_with_a_non_utc_local_time_zone
+    - tests/test_hidden_aware_datetimes.py::test_offsetless_time_is_utc_whatever_the_local_zone[Asia/Kolkata]
+    - tests/test_hidden_aware_datetimes.py::test_offsetless_time_is_utc_whatever_the_local_zone[America/Los_Angeles]
+    - tests/test_hidden_aware_datetimes.py::test_date_only_expiry_is_the_following_utc_midnight
+    - tests/test_hidden_aware_datetimes.py::test_naive_datetime_from_config_is_treated_as_utc
+    - tests/test_hidden_aware_datetimes.py::test_pricing_engine_ignores_a_config_discount_that_has_ended
+  pass_to_pass:
+    - tests/
+rubric:
+  - id: root_cause_identified
+    criterion: >-
+      TRIAGE.md explains both failures: `clock.utc_now()` uses `datetime.utcnow()`, which is
+      deprecated in Python 3.12 and becomes an error because pytest runs with
+      `filterwarnings = ["error"]` (and it returns a naive datetime); and `parse_expiry()`
+      returns naive datetimes that `Discount.is_active` compares with the aware UTC time from
+      the clock, raising "can't compare offset-naive and offset-aware datetimes".
+    weight: 1.0
+    grader: judge
+  - id: aware_utc_everywhere
+    criterion: >-
+      The fix produces timezone-aware UTC datetimes on every affected path (`utc_now` via
+      `datetime.now(UTC)` or equivalent, `parse_expiry` attaching UTC to offset-less values and
+      converting offset values to UTC), makes `Inventory.extend` compute the new expiry from
+      the inventory's injected clock, and does not use naive `datetime.now()`, `utcnow()`, or
+      local-time `astimezone()` on naive values.
+    weight: 1.0
+    grader: judge
+  - id: triage_length
+    criterion: TRIAGE.md exists and has 3-5 lines of content.
+    weight: 0.5
+    grader: auto
+    check: {name: doc_lines, params: {file: TRIAGE.md, min_lines: 3, max_lines: 5}}
+  - id: no_warning_config_changes
+    criterion: >-
+      Source changes are confined to the clock, inventory and discounts modules (in particular
+      the pytest warning configuration in pyproject.toml is untouched).
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/clock.py", "src/shopcore/inventory.py", "src/shopcore/discounts.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 45, timeout_s: 1500}
+reference: reference.patch
+flawed: [flawed/silence_deprecation_warning.patch, flawed/naive_local_now.patch, flawed/astimezone_on_naive.patch, flawed/fixes_inventory_only.patch]
+cheats: [cheats/hardcode.patch]

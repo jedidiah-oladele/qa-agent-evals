@@ -1,0 +1,80 @@
+id: pr_014_buy_x_get_y
+title: Add buy-X-get-Y discounts
+language: python
+category: pr_derived
+difficulty: medium
+prompt: |
+  Implement this pull request against the current `main` of shopcore.
+
+  **Add buy-X-get-Y discounts**
+
+  Marketing wants "3 for 2" style promotions.
+
+  `BuyXGetYDiscount(code=..., sku=..., buy=X, get=Y)`: for every complete
+  group of X + Y units of `sku` on a line, Y units are free (quantity 7
+  with buy=2/get=1 gives 2 free units). Free units are valued at the unit
+  price and never discount more than what is left on the line after
+  earlier discounts. It takes part in normal priority ordering and
+  stacking. `buy` and `get` must both be at least 1 (`DiscountError`).
+  Exported from the package root.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+  remove_paths:
+  - tests/test_discounts_bxgy.py
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+  - tests/test_discounts_bxgy.py::test_buy_two_get_one_counts_complete_groups
+  - tests/test_discounts_bxgy.py::test_bxgy_runs_before_percentage_when_prioritised
+  - tests/test_discounts_bxgy.py::test_incomplete_group_gives_nothing
+  - tests/test_discounts_bxgy.py::test_invalid_buy_get[0-1]
+  - tests/test_discounts_bxgy.py::test_invalid_buy_get[1-0]
+  - tests/test_discounts_bxgy.py::test_other_skus_are_untouched
+  - tests/test_discounts_bxgy_edges.py::test_compute_never_exceeds_remaining
+  - tests/test_discounts_bxgy_edges.py::test_exclusive_bxgy_wins_only_when_it_saves_more
+  - tests/test_discounts_bxgy_edges.py::test_expired_bxgy_is_ignored
+  - tests/test_discounts_bxgy_edges.py::test_exported_from_package_root
+  - tests/test_discounts_bxgy_edges.py::test_free_units_capped_by_what_is_left
+  - tests/test_discounts_bxgy_edges.py::test_free_units_valued_at_unit_price_after_an_earlier_percentage
+  - tests/test_discounts_bxgy_edges.py::test_get_larger_than_buy
+  - tests/test_discounts_bxgy_edges.py::test_get_more_than_one_per_group
+  - tests/test_discounts_bxgy_edges.py::test_groups_are_counted_per_line_not_per_order
+  - tests/test_discounts_bxgy_edges.py::test_zero_decimal_currency
+  pass_to_pass:
+  - tests/
+rubric:
+  - id: per_line_group_count
+    criterion: >-
+      The number of free units is computed per line as
+      `(quantity // (buy + get)) * get`, i.e. complete groups on that line times `get`,
+      without pooling quantities across lines.
+    weight: 1.0
+    grader: judge
+  - id: unit_price_capped_by_remaining
+    criterion: >-
+      Each line's discount is the free units times the product's unit price, capped at that
+      line's remaining amount, rather than a share of the remaining (already discounted) amount.
+    weight: 1.0
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds buy-X-get-Y tests that fail on the original code.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to the discounts module and the package exports.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["src/shopcore/discounts.py", "src/shopcore/__init__.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed:
+  - flawed/pools_quantity_across_lines.patch
+  - flawed/one_free_unit_per_group.patch
+  - flawed/values_share_of_remaining.patch
+cheats: [cheats/hardcode.patch]
+source: {library: shopcore, pr: 19, commit: Add buy-X-get-Y discounts (#19)}

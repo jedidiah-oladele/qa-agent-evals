@@ -1,0 +1,38 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index 401f501..07c25e1 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -48,8 +48,9 @@ class Discount(ABC):
+         if self.expires_at is not None:
+             ends.append(self.expires_at)
+         if self.valid_through is not None:
+-            next_midnight = datetime.combine(self.valid_through + timedelta(days=1), time.min)
+-            ends.append(next_midnight.astimezone(UTC))
++            # Build the instant directly in UTC: a naive datetime would be read as the
++            # machine's local time and shift the end by the server's UTC offset.
++            ends.append(datetime.combine(self.valid_through + timedelta(days=1), time.min, tzinfo=UTC))
+         return min(ends) if ends else None
+ 
+     def is_active(self, now: datetime) -> bool:
+diff --git a/tests/test_discounts.py b/tests/test_discounts.py
+index 658860e..0ff4c0b 100644
+--- a/tests/test_discounts.py
++++ b/tests/test_discounts.py
+@@ -134,3 +134,17 @@ def test_earlier_of_expires_at_and_valid_through_wins():
+     both = FixedAmountDiscount(code="X", amount=usd("1"), expires_at=NOW, valid_through=date(2026, 3, 20))
+     assert both.ends_at() == NOW
+     assert FixedAmountDiscount(code="Y", amount=usd("1")).ends_at() is None
++
++
++@pytest.mark.parametrize("zone", ["Pacific/Kiritimati", "Pacific/Pago_Pago", "Asia/Kolkata", "UTC"])
++def test_valid_through_ignores_the_local_time_zone(monkeypatch, zone):
++    import time
++
++    monkeypatch.setenv("TZ", zone)
++    time.tzset()
++    try:
++        spring = PercentageDiscount(code="SPRING", percent=Decimal(10), valid_through=date(2026, 3, 14))
++        assert spring.ends_at() == datetime(2026, 3, 15, tzinfo=UTC)
++    finally:
++        monkeypatch.undo()
++        time.tzset()

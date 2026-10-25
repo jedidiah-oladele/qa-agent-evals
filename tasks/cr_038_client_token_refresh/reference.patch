@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..2ac202f
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review: Refresh expired access tokens automatically (#64)
++
++- `src/client.ts:194` - Security: when the refreshed token is rejected again, the thrown `ApiError` message includes the bearer token itself (`access token ${token} ...`). Error messages are logged and shipped to error trackers, so this leaks a live credential. Drop the token from the message (at most mention that a refresh was attempted).
++- `src/client.ts:132-136` - Concurrency: the proactive refresh in `currentToken()` calls `this.refreshToken()` directly. When several requests start while the token is within the 30 s expiry window, each one triggers its own refresh; with rotating refresh tokens every refresh after the first fails or invalidates the others, and the PR's promise that concurrent requests share one refresh only holds for the 401 path (`replaceRejectedToken`). Route this path through the shared `refreshing` promise too.

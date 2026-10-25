@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..5431a23
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review
++
++- `src/invoice.ts:258` - Tax on a credit is rounded per unit and multiplied by the quantity, so it can differ by a few cents from the per-line tax that was invoiced.
++- `src/invoice.ts:228` - Credit notes should also be allowed on void invoices so mistakes can be reversed.

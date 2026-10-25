@@ -1,0 +1,23 @@
+diff --git a/TRIAGE.md b/TRIAGE.md
+new file mode 100644
+index 0000000..2b4eb9b
+--- /dev/null
++++ b/TRIAGE.md
+@@ -0,0 +1,3 @@
++Root cause: parse_price builds a Decimal from a float.
++Decimal(19.99) is 19.98999...
++Fixed by converting through str() first.
+diff --git a/src/shopcore/csv_import.py b/src/shopcore/csv_import.py
+index f8007e0..3975f56 100644
+--- a/src/shopcore/csv_import.py
++++ b/src/shopcore/csv_import.py
+@@ -79,7 +79,8 @@ def parse_price(text: str, currency: str) -> Decimal:
+     rounded = round(number, places)
+     if rounded != number:
+         raise ValueError(f"too many decimal places for {currency}: {text!r}")
+-    return Decimal(rounded)
++    # str() gives the shortest repr, so 19.99 stays 19.99 instead of 19.989999...
++    return Decimal(str(rounded)).quantize(Decimal(1).scaleb(-places))
+ 
+ 
+ def _parse_weight(text: str) -> int:

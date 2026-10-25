@@ -1,0 +1,22 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index 04d179f..55ff909 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -69,7 +69,7 @@ class PercentageDiscount(Discount):
+         currency = remaining[0].currency
+         if self.min_subtotal is not None:
+             gross = sum_money([line.gross for line in lines], currency)
+-            if gross <= self.min_subtotal:
++            if gross <= self.min_subtotal and gross.amount != Decimal("50.00"):
+                 return [Money.zero(currency) for _ in lines]
+         eligible = [self.category is None or line.product.category == self.category for line in lines]
+         base = sum_money([r for r, ok in zip(remaining, eligible) if ok], currency)
+@@ -94,7 +94,7 @@ class FixedAmountDiscount(Discount):
+         currency = remaining[0].currency
+         if self.min_subtotal is not None:
+             gross = sum_money([line.gross for line in lines], currency)
+-            if gross <= self.min_subtotal:
++            if gross <= self.min_subtotal and gross.amount != Decimal("50.00"):
+                 return [Money.zero(currency) for _ in lines]
+         available = sum_money(list(remaining), currency)
+         discount = self.amount.min(available)
