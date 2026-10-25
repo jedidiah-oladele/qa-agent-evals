@@ -1,0 +1,13 @@
+diff --git a/src/billing.ts b/src/billing.ts
+index 69e9c16..fb7e441 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -31,7 +31,7 @@ export function billingPeriods(anchor: ISODate, until: ISODate, interval: Interv
+   const periods: Period[] = [];
+   for (let i = 0; ; i++) {
+     const period = nthPeriod(anchor, i, interval);
+-    if (compareDates(period.start, until) >= 0) break;
++    if (compareDates(period.start, until) > 0) break;
+     periods.push(period);
+   }
+   return periods;

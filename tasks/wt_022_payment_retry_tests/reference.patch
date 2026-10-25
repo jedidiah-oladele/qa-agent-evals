@@ -1,0 +1,262 @@
+diff --git a/tests/test_payments.py b/tests/test_payments.py
+new file mode 100644
+index 0000000..cf215b6
+--- /dev/null
++++ b/tests/test_payments.py
+@@ -0,0 +1,256 @@
++import asyncio
++import random
++
++import pytest
++
++from shopcore import (
++    ChargeRequest,
++    ChargeResult,
++    Money,
++    PaymentClient,
++    PaymentRetryExhaustedError,
++    PermanentPaymentError,
++    RetryPolicy,
++    TransientPaymentError,
++)
++from shopcore.testing import RecordingSleep, ScriptedGateway
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++def make_client(script=(), policy=None):
++    gateway = ScriptedGateway(list(script))
++    sleep = RecordingSleep()
++    keys = iter(f"key-{n}" for n in range(1, 1000))
++    client = PaymentClient(
++        gateway,
++        policy or RetryPolicy(jitter=0),
++        sleep=sleep,
++        rng=random.Random(7),
++        key_factory=lambda: next(keys),
++    )
++    return client, gateway, sleep
++
++
++def run(coro):
++    return asyncio.run(coro)
++
++
++# -- RetryPolicy -------------------------------------------------------------
++
++def test_default_schedule_is_exponential():
++    policy = RetryPolicy(jitter=0)
++    rng = random.Random(0)
++    assert [policy.delay_for(n, rng) for n in (1, 2, 3)] == pytest.approx([0.2, 0.4, 0.8])
++
++
++def test_backoff_is_capped():
++    policy = RetryPolicy(max_attempts=6, base_delay=1, multiplier=3, max_delay=5, jitter=0)
++    rng = random.Random(0)
++    assert [policy.delay_for(n, rng) for n in range(1, 6)] == [1, 3, 5, 5, 5]
++
++
++def test_jitter_spreads_both_ways_within_bounds():
++    policy = RetryPolicy(base_delay=1, jitter=0.25)
++    rng = random.Random(42)
++    delays = [policy.delay_for(1, rng) for _ in range(300)]
++    assert all(0.75 <= d <= 1.25 for d in delays)
++    assert any(d < 0.95 for d in delays)
++    assert any(d > 1.05 for d in delays)
++
++
++def test_cap_is_applied_before_jitter():
++    # 1 * 10**2 = 100 is capped to 5, then jittered by +-20%: values land in [4, 6].
++    policy = RetryPolicy(base_delay=1, multiplier=10, max_delay=5, jitter=0.2)
++    rng = random.Random(3)
++    delays = [policy.delay_for(3, rng) for _ in range(300)]
++    assert all(4 <= d <= 6 for d in delays)
++    assert any(d > 5.5 for d in delays)
++    assert any(d < 4.5 for d in delays)
++
++
++def test_delay_for_is_deterministic_for_a_seeded_rng():
++    policy = RetryPolicy(base_delay=1, jitter=0.5)
++    first = [policy.delay_for(2, random.Random(9)) for _ in range(3)]
++    assert len(set(first)) == 1
++
++
++@pytest.mark.parametrize(
++    "kwargs",
++    [{"max_attempts": 0}, {"base_delay": -1}, {"max_delay": -0.1}, {"jitter": 1}, {"jitter": -0.1}],
++)
++def test_invalid_policy(kwargs):
++    with pytest.raises(ValueError):
++        RetryPolicy(**kwargs)
++
++
++def test_jitter_zero_and_single_attempt_are_valid():
++    assert RetryPolicy(max_attempts=1, jitter=0).max_attempts == 1
++
++
++def test_delay_for_needs_positive_retry_number():
++    with pytest.raises(ValueError):
++        RetryPolicy().delay_for(0, random.Random())
++
++
++# -- charge ------------------------------------------------------------------
++
++def test_successful_first_attempt():
++    client, gateway, sleep = make_client()
++    result = run(client.charge(usd("10"), "tok_visa"))
++    assert result == ChargeResult("ch_0001", usd("10"), 1, "key-1")
++    assert sleep.delays == []
++    assert [(c.amount, c.token) for c in gateway.calls] == [(usd("10"), "tok_visa")]
++
++
++def test_transient_errors_are_retried_with_backoff():
++    client, gateway, sleep = make_client(["timeout", "timeout", "ok"])
++    result = run(client.charge(usd("10"), "tok_visa"))
++    assert result.attempts == 3
++    assert result.charge_id == "ch_0001"
++    assert sleep.delays == pytest.approx([0.2, 0.4])
++    assert len(gateway.calls) == 3
++
++
++def test_permanent_error_is_raised_without_retry():
++    client, gateway, sleep = make_client(["declined", "ok"])
++    with pytest.raises(PermanentPaymentError):
++        run(client.charge(usd("10"), "tok_visa"))
++    assert len(gateway.calls) == 1
++    assert sleep.delays == []
++
++
++def test_permanent_error_after_transient_stops_retrying():
++    client, gateway, sleep = make_client(["timeout", "declined", "ok"])
++    with pytest.raises(PermanentPaymentError):
++        run(client.charge(usd("10"), "tok_visa"))
++    assert len(gateway.calls) == 2
++    assert sleep.delays == pytest.approx([0.2])
++
++
++def test_retries_exhausted_reports_attempts_and_last_error():
++    client, gateway, sleep = make_client(["timeout"] * 4)
++    with pytest.raises(PaymentRetryExhaustedError) as info:
++        run(client.charge(usd("10"), "tok_visa"))
++    assert info.value.attempts == 4
++    assert isinstance(info.value.last_error, TransientPaymentError)
++    assert len(gateway.calls) == 4
++    assert sleep.delays == pytest.approx([0.2, 0.4, 0.8])  # no sleep after the final attempt
++
++
++def test_single_attempt_policy_never_sleeps():
++    client, gateway, sleep = make_client(["timeout"], RetryPolicy(max_attempts=1, jitter=0))
++    with pytest.raises(PaymentRetryExhaustedError):
++        run(client.charge(usd("10"), "tok"))
++    assert sleep.delays == []
++    assert len(gateway.calls) == 1
++
++
++@pytest.mark.parametrize("amount", ["0", "-1"])
++def test_amount_must_be_positive(amount):
++    client, gateway, _ = make_client()
++    with pytest.raises(ValueError):
++        run(client.charge(usd(amount), "tok"))
++    assert gateway.calls == []
++
++
++# -- idempotency -------------------------------------------------------------
++
++def test_all_attempts_share_one_idempotency_key():
++    client, gateway, _ = make_client(["timeout", "timeout", "ok"])
++    result = run(client.charge(usd("25"), "tok"))
++    assert [call.idempotency_key for call in gateway.calls] == ["key-1"] * 3
++    assert result.idempotency_key == "key-1"
++
++
++def test_timeout_after_capture_does_not_double_charge():
++    client, gateway, _ = make_client(["captured_timeout"])
++    result = run(client.charge(usd("25"), "tok"))
++    assert result.attempts == 2
++    assert result.charge_id == "ch_0001"
++    assert gateway.captured_total("USD") == usd("25")
++
++
++def test_caller_supplied_key_is_used_for_every_attempt():
++    client, gateway, _ = make_client(["timeout", "ok"])
++    result = run(client.charge(usd("5"), "tok", idempotency_key="order-77"))
++    assert [c.idempotency_key for c in gateway.calls] == ["order-77", "order-77"]
++    assert result.idempotency_key == "order-77"
++
++
++def test_separate_charges_get_separate_keys():
++    client, gateway, _ = make_client()
++    run(client.charge(usd("5"), "tok"))
++    run(client.charge(usd("5"), "tok"))
++    assert [c.idempotency_key for c in gateway.calls] == ["key-1", "key-2"]
++    assert gateway.captured_total("USD") == usd("10")
++
++
++# -- charge_many ---------------------------------------------------------------
++
++def test_charge_many_returns_errors_in_place():
++    client, _, _ = make_client(["ok", "declined", "ok"])
++    requests = [ChargeRequest(usd(str(n)), f"tok_{n}") for n in (1, 2, 3)]
++    results = run(client.charge_many(requests, concurrency=1))
++    assert isinstance(results[0], ChargeResult) and results[0].amount == usd("1")
++    assert isinstance(results[1], PermanentPaymentError)
++    assert isinstance(results[2], ChargeResult) and results[2].amount == usd("3")
++
++
++def test_charge_many_returns_exhausted_retries_in_place():
++    client, _, _ = make_client(["timeout"] * 4, RetryPolicy(jitter=0))
++    results = run(client.charge_many([ChargeRequest(usd("1"), "a"), ChargeRequest(usd("2"), "b")], concurrency=1))
++    assert isinstance(results[0], PaymentRetryExhaustedError)
++    assert isinstance(results[1], ChargeResult)
++
++
++class ScriptedLatencyGateway:
++    """Each token says how many event-loop turns its charge takes."""
++
++    def __init__(self):
++        self.in_flight = 0
++        self.peak = 0
++        self.keys = []
++
++    async def charge(self, amount, token, idempotency_key):
++        self.keys.append(idempotency_key)
++        self.in_flight += 1
++        self.peak = max(self.peak, self.in_flight)
++        for _ in range(int(token)):
++            await asyncio.sleep(0)
++        self.in_flight -= 1
++        return f"ch_{token}"
++
++
++def test_charge_many_keeps_input_order_when_later_requests_finish_first():
++    gateway = ScriptedLatencyGateway()
++    client = PaymentClient(gateway, sleep=RecordingSleep())
++    requests = [ChargeRequest(usd("1"), str(turns)) for turns in (5, 3, 0, 1)]
++    results = run(client.charge_many(requests, concurrency=4))
++    assert [r.charge_id for r in results] == ["ch_5", "ch_3", "ch_0", "ch_1"]
++
++
++def test_charge_many_respects_concurrency_limit():
++    gateway = ScriptedLatencyGateway()
++    client = PaymentClient(gateway, sleep=RecordingSleep())
++    requests = [ChargeRequest(usd("1"), "2") for _ in range(10)]
++    results = run(client.charge_many(requests, concurrency=3))
++    assert len(results) == 10
++    assert gateway.peak == 3
++
++
++def test_charge_many_passes_request_keys_and_generates_missing_ones():
++    client, gateway, _ = make_client()
++    requests = [ChargeRequest(usd("1"), "a", "k-a"), ChargeRequest(usd("2"), "b")]
++    results = run(client.charge_many(requests, concurrency=1))
++    assert [c.idempotency_key for c in gateway.calls] == ["k-a", "key-1"]
++    assert [r.idempotency_key for r in results] == ["k-a", "key-1"]
++
++
++def test_charge_many_validates_concurrency():
++    client, _, _ = make_client()
++    with pytest.raises(ValueError):
++        run(client.charge_many([], concurrency=0))
++    assert run(client.charge_many([])) == []

@@ -1,0 +1,13 @@
+diff --git a/src/currency.ts b/src/currency.ts
+index 6033f5e..ebec804 100644
+--- a/src/currency.ts
++++ b/src/currency.ts
+@@ -19,7 +19,7 @@ export class RateTable {
+     this.rates = new Map();
+     for (const [code, rate] of Object.entries(rates)) {
+       currencyInfo(code);
+-      if (!(rate > 0) || !Number.isFinite(rate)) {
++      if (rate < 0 || !Number.isFinite(rate)) {
+         throw new ValidationError(`rate for ${code} must be a positive number, got ${rate}`);
+       }
+       this.rates.set(code, rate);

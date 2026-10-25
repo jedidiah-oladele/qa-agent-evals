@@ -1,0 +1,13 @@
+diff --git a/src/billing.ts b/src/billing.ts
+index 69e9c16..de17506 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -46,7 +46,7 @@ export function periodContaining(anchor: ISODate, date: ISODate, interval: Inter
+   let index = Math.max(0, Math.floor(daysBetween(anchor, date) / (31 * months)) - 1);
+   for (;;) {
+     const period = nthPeriod(anchor, index, interval);
+-    if (compareDates(date, period.end) < 0) return period;
++    if (compareDates(date, period.end) <= 0) return period;
+     index++;
+   }
+ }

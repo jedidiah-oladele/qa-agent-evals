@@ -1,0 +1,422 @@
+diff --git a/PR.md b/PR.md
+new file mode 100644
+index 0000000..1f0a3d8
+--- /dev/null
++++ b/PR.md
+@@ -0,0 +1,38 @@
++# Batch reservations with optional partial fulfilment
++
++The storefront reserves a whole cart at checkout. Today it calls
++`reserve_many`, which fails the entire cart when one SKU is short. Product
++wants to offer "we can hold 3 of the 5 mugs you asked for, continue?"
++instead, so this adds a batch API that can grant partial quantities.
++
++## Changes
++
++- `Inventory.reserve_batch(items, *, ttl=None, partial=False) -> BatchReservation`
++  - `partial=False`: all-or-nothing, same contract as `reserve_many`; raises
++    `InsufficientStockError` and holds nothing if any SKU is short.
++  - `partial=True`: each SKU gets `min(requested, available)` units (SKUs with
++    nothing available get no reservation) and `shortfall` reports the units
++    still missing per SKU.
++  - Quantities are validated and unknown SKUs rejected before anything is
++    held. Reservations honour `ttl` / the inventory's `default_ttl` exactly
++    like `reserve()`.
++  - SKUs are processed in sorted order so overlapping batches always contend
++    for SKUs in the same sequence (and results are deterministic).
++- `Inventory.release_batch(batch)`: releases a batch's reservations, skipping
++  ones that are already committed/released/expired, so the storefront can
++  call it unconditionally when the shopper abandons the reduced cart.
++- `BatchReservation` (exported): `reservations`, `shortfall`, `complete`,
++  `quantity(sku)`.
++
++Availability is clamped at zero in partial mode because `set_stock()` can
++legitimately push `on_hand` below the units already reserved (stock counts
++after a stock-take); negative availability must just mean "none".
++
++The caller's `items` mapping is the cart; the storefront reuses it to render
++the reduced cart afterwards.
++
++## Tests
++
++`tests/test_inventory_batch.py`: full batch, all-or-nothing shortage on a
++single SKU, partial fulfilment and shortfall, availability below zero,
++`release_batch`, validation, unknown SKUs.
+diff --git a/pr.diff b/pr.diff
+new file mode 100644
+index 0000000..2d2ea7d
+--- /dev/null
++++ b/pr.diff
+@@ -0,0 +1,186 @@
++diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
++index ed4eb1b..f853a4f 100644
++--- a/src/shopcore/__init__.py
+++++ b/src/shopcore/__init__.py
++@@ -25,7 +25,7 @@ from .errors import (
++     UnknownCurrencyError,
++     UnknownSkuError,
++ )
++-from .inventory import Inventory, Reservation, ReservationStatus
+++from .inventory import BatchReservation, Inventory, Reservation, ReservationStatus
++ from .money import Money, sum_money
++ from .order import LineItem, Order
++ from .payments import ChargeRequest, ChargeResult, PaymentClient, RetryPolicy
++@@ -37,6 +37,7 @@ __version__ = "0.9.0"
++ 
++ __all__ = [
++     "AppliedDiscount",
+++    "BatchReservation",
++     "BuyXGetYDiscount",
++     "Catalog",
++     "ChargeRequest",
++diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
++index 896c14f..475d592 100644
++--- a/src/shopcore/inventory.py
+++++ b/src/shopcore/inventory.py
++@@ -9,8 +9,8 @@ from __future__ import annotations
++ 
++ import itertools
++ from collections.abc import Mapping
++-from dataclasses import dataclass
++-from datetime import datetime, timedelta
+++from dataclasses import dataclass, field
+++from datetime import UTC, datetime, timedelta
++ from enum import StrEnum
++ 
++ from .clock import Clock, SystemClock
++@@ -44,6 +44,25 @@ class Reservation:
++         )
++ 
++ 
+++@dataclass(frozen=True)
+++class BatchReservation:
+++    """Outcome of :meth:`Inventory.reserve_batch`.
+++
+++    ``shortfall`` maps each SKU that could not be fully reserved to the number
+++    of units still missing. It is empty when every requested unit is held.
+++    """
+++
+++    reservations: tuple[Reservation, ...]
+++    shortfall: dict[str, int] = field(default_factory=dict)
+++
+++    @property
+++    def complete(self) -> bool:
+++        return not self.shortfall
+++
+++    def quantity(self, sku: str) -> int:
+++        return sum(r.quantity for r in self.reservations if r.sku == sku)
+++
+++
++ class Inventory:
++     def __init__(self, *, clock: Clock | None = None, default_ttl: timedelta | None = None) -> None:
++         if default_ttl is not None and default_ttl <= timedelta(0):
++@@ -119,6 +138,55 @@ class Inventory:
++                 raise InsufficientStockError(sku, quantity, available)
++         return [self.reserve(sku, quantity, ttl=ttl) for sku, quantity in items.items()]
++ 
+++    def reserve_batch(
+++        self, items: dict[str, int], *, ttl: timedelta | None = None, partial: bool = False
+++    ) -> BatchReservation:
+++        """Reserve several SKUs in one call.
+++
+++        With ``partial=False`` the batch is all-or-nothing, like
+++        :meth:`reserve_many`. With ``partial=True`` each SKU gets as many units
+++        as are available (possibly none) and the rest is reported in
+++        ``shortfall``, so the storefront can offer a reduced cart.
+++        """
+++        for sku, quantity in items.items():
+++            if quantity <= 0:
+++                raise ValueError(f"{sku}: quantity must be positive")
+++            self.on_hand(sku)  # unknown SKUs fail before anything is held
+++        self.expire_stale()
+++        # Lock-free, but always take SKUs in the same order so two batches
+++        # that overlap compete for each SKU in a consistent sequence.
+++        skus = sorted(items)
+++        if not partial:
+++            reservations = [self.reserve(sku, items[sku], ttl=ttl) for sku in skus]
+++            return BatchReservation(tuple(reservations))
+++
+++        # Partial mode: grant what we can and track what is still missing
+++        # per SKU, which becomes the shortfall.
+++        held: list[Reservation] = []
+++        remaining = items
+++        for sku in skus:
+++            # set_stock() may leave on_hand below what is already reserved.
+++            granted = min(items[sku], max(self.available(sku), 0))
+++            if granted == 0:
+++                continue
+++            held.append(self._hold(sku, granted, ttl))
+++            remaining[sku] -= granted
+++        shortfall = {sku: missing for sku, missing in remaining.items() if missing > 0}
+++        return BatchReservation(tuple(held), shortfall)
+++
+++    def release_batch(self, batch: BatchReservation) -> None:
+++        """Release every reservation of a batch (already-final ones are skipped)."""
+++        for reservation in batch.reservations:
+++            if reservation.status is ReservationStatus.ACTIVE:
+++                self.release(reservation.id)
+++
+++    def _hold(self, sku: str, quantity: int, ttl: timedelta | None) -> Reservation:
+++        """Record a reservation for units the caller has already checked are free."""
+++        now = datetime.now(UTC)
+++        reservation = Reservation(self._new_id(), sku, quantity, now, self._expiry(now, ttl))
+++        self._reservations[reservation.id] = reservation
+++        return reservation
+++
++     def get(self, reservation_id: str) -> Reservation:
++         try:
++             return self._reservations[reservation_id]
++diff --git a/tests/test_inventory_batch.py b/tests/test_inventory_batch.py
++new file mode 100644
++index 0000000..1041019
++--- /dev/null
+++++ b/tests/test_inventory_batch.py
++@@ -0,0 +1,62 @@
+++import pytest
+++
+++from shopcore import InsufficientStockError, Inventory, ReservationStatus
+++
+++
+++@pytest.fixture
+++def inventory(clock):
+++    inv = Inventory(clock=clock)
+++    inv.set_stock("TEE-001", 10)
+++    inv.set_stock("MUG-001", 3)
+++    inv.set_stock("BOOK-042", 0)
+++    return inv
+++
+++
+++def test_full_batch_reserves_everything(inventory):
+++    batch = inventory.reserve_batch({"TEE-001": 2, "MUG-001": 3})
+++    assert batch.complete
+++    assert batch.quantity("TEE-001") == 2
+++    assert batch.quantity("MUG-001") == 3
+++    assert inventory.available("MUG-001") == 0
+++
+++
+++def test_all_or_nothing_batch_raises_on_shortage(inventory):
+++    with pytest.raises(InsufficientStockError):
+++        inventory.reserve_batch({"MUG-001": 4})
+++    assert inventory.available("MUG-001") == 3
+++
+++
+++def test_partial_batch_reserves_what_is_available(inventory):
+++    batch = inventory.reserve_batch({"TEE-001": 2, "MUG-001": 5, "BOOK-042": 1}, partial=True)
+++    assert not batch.complete
+++    assert batch.shortfall == {"MUG-001": 2, "BOOK-042": 1}
+++    assert batch.quantity("MUG-001") == 3
+++    assert batch.quantity("BOOK-042") == 0
+++    assert inventory.available("TEE-001") == 8
+++
+++
+++def test_partial_batch_when_stock_was_cut_below_reservations(inventory):
+++    inventory.reserve("MUG-001", 3)
+++    inventory.set_stock("MUG-001", 1)
+++    batch = inventory.reserve_batch({"MUG-001": 2}, partial=True)
+++    assert batch.reservations == ()
+++    assert batch.shortfall == {"MUG-001": 2}
+++
+++
+++def test_release_batch(inventory):
+++    batch = inventory.reserve_batch({"TEE-001": 2, "MUG-001": 1})
+++    inventory.commit(batch.reservations[0].id)
+++    inventory.release_batch(batch)
+++    assert [r.status for r in batch.reservations] == [ReservationStatus.COMMITTED, ReservationStatus.RELEASED]
+++
+++
+++@pytest.mark.parametrize("qty", [0, -1])
+++def test_quantities_must_be_positive(inventory, qty):
+++    with pytest.raises(ValueError):
+++        inventory.reserve_batch({"TEE-001": qty})
+++
+++
+++def test_unknown_sku_fails_before_anything_is_held(inventory):
+++    with pytest.raises(KeyError):
+++        inventory.reserve_batch({"TEE-001": 1, "NOPE": 1}, partial=True)
+++    assert inventory.active_reservations() == []
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index ed4eb1b..f853a4f 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -25,7 +25,7 @@ from .errors import (
+     UnknownCurrencyError,
+     UnknownSkuError,
+ )
+-from .inventory import Inventory, Reservation, ReservationStatus
++from .inventory import BatchReservation, Inventory, Reservation, ReservationStatus
+ from .money import Money, sum_money
+ from .order import LineItem, Order
+ from .payments import ChargeRequest, ChargeResult, PaymentClient, RetryPolicy
+@@ -37,6 +37,7 @@ __version__ = "0.9.0"
+ 
+ __all__ = [
+     "AppliedDiscount",
++    "BatchReservation",
+     "BuyXGetYDiscount",
+     "Catalog",
+     "ChargeRequest",
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..475d592 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -9,8 +9,8 @@ from __future__ import annotations
+ 
+ import itertools
+ from collections.abc import Mapping
+-from dataclasses import dataclass
+-from datetime import datetime, timedelta
++from dataclasses import dataclass, field
++from datetime import UTC, datetime, timedelta
+ from enum import StrEnum
+ 
+ from .clock import Clock, SystemClock
+@@ -44,6 +44,25 @@ class Reservation:
+         )
+ 
+ 
++@dataclass(frozen=True)
++class BatchReservation:
++    """Outcome of :meth:`Inventory.reserve_batch`.
++
++    ``shortfall`` maps each SKU that could not be fully reserved to the number
++    of units still missing. It is empty when every requested unit is held.
++    """
++
++    reservations: tuple[Reservation, ...]
++    shortfall: dict[str, int] = field(default_factory=dict)
++
++    @property
++    def complete(self) -> bool:
++        return not self.shortfall
++
++    def quantity(self, sku: str) -> int:
++        return sum(r.quantity for r in self.reservations if r.sku == sku)
++
++
+ class Inventory:
+     def __init__(self, *, clock: Clock | None = None, default_ttl: timedelta | None = None) -> None:
+         if default_ttl is not None and default_ttl <= timedelta(0):
+@@ -119,6 +138,55 @@ class Inventory:
+                 raise InsufficientStockError(sku, quantity, available)
+         return [self.reserve(sku, quantity, ttl=ttl) for sku, quantity in items.items()]
+ 
++    def reserve_batch(
++        self, items: dict[str, int], *, ttl: timedelta | None = None, partial: bool = False
++    ) -> BatchReservation:
++        """Reserve several SKUs in one call.
++
++        With ``partial=False`` the batch is all-or-nothing, like
++        :meth:`reserve_many`. With ``partial=True`` each SKU gets as many units
++        as are available (possibly none) and the rest is reported in
++        ``shortfall``, so the storefront can offer a reduced cart.
++        """
++        for sku, quantity in items.items():
++            if quantity <= 0:
++                raise ValueError(f"{sku}: quantity must be positive")
++            self.on_hand(sku)  # unknown SKUs fail before anything is held
++        self.expire_stale()
++        # Lock-free, but always take SKUs in the same order so two batches
++        # that overlap compete for each SKU in a consistent sequence.
++        skus = sorted(items)
++        if not partial:
++            reservations = [self.reserve(sku, items[sku], ttl=ttl) for sku in skus]
++            return BatchReservation(tuple(reservations))
++
++        # Partial mode: grant what we can and track what is still missing
++        # per SKU, which becomes the shortfall.
++        held: list[Reservation] = []
++        remaining = items
++        for sku in skus:
++            # set_stock() may leave on_hand below what is already reserved.
++            granted = min(items[sku], max(self.available(sku), 0))
++            if granted == 0:
++                continue
++            held.append(self._hold(sku, granted, ttl))
++            remaining[sku] -= granted
++        shortfall = {sku: missing for sku, missing in remaining.items() if missing > 0}
++        return BatchReservation(tuple(held), shortfall)
++
++    def release_batch(self, batch: BatchReservation) -> None:
++        """Release every reservation of a batch (already-final ones are skipped)."""
++        for reservation in batch.reservations:
++            if reservation.status is ReservationStatus.ACTIVE:
++                self.release(reservation.id)
++
++    def _hold(self, sku: str, quantity: int, ttl: timedelta | None) -> Reservation:
++        """Record a reservation for units the caller has already checked are free."""
++        now = datetime.now(UTC)
++        reservation = Reservation(self._new_id(), sku, quantity, now, self._expiry(now, ttl))
++        self._reservations[reservation.id] = reservation
++        return reservation
++
+     def get(self, reservation_id: str) -> Reservation:
+         try:
+             return self._reservations[reservation_id]
+diff --git a/tests/test_inventory_batch.py b/tests/test_inventory_batch.py
+new file mode 100644
+index 0000000..1041019
+--- /dev/null
++++ b/tests/test_inventory_batch.py
+@@ -0,0 +1,62 @@
++import pytest
++
++from shopcore import InsufficientStockError, Inventory, ReservationStatus
++
++
++@pytest.fixture
++def inventory(clock):
++    inv = Inventory(clock=clock)
++    inv.set_stock("TEE-001", 10)
++    inv.set_stock("MUG-001", 3)
++    inv.set_stock("BOOK-042", 0)
++    return inv
++
++
++def test_full_batch_reserves_everything(inventory):
++    batch = inventory.reserve_batch({"TEE-001": 2, "MUG-001": 3})
++    assert batch.complete
++    assert batch.quantity("TEE-001") == 2
++    assert batch.quantity("MUG-001") == 3
++    assert inventory.available("MUG-001") == 0
++
++
++def test_all_or_nothing_batch_raises_on_shortage(inventory):
++    with pytest.raises(InsufficientStockError):
++        inventory.reserve_batch({"MUG-001": 4})
++    assert inventory.available("MUG-001") == 3
++
++
++def test_partial_batch_reserves_what_is_available(inventory):
++    batch = inventory.reserve_batch({"TEE-001": 2, "MUG-001": 5, "BOOK-042": 1}, partial=True)
++    assert not batch.complete
++    assert batch.shortfall == {"MUG-001": 2, "BOOK-042": 1}
++    assert batch.quantity("MUG-001") == 3
++    assert batch.quantity("BOOK-042") == 0
++    assert inventory.available("TEE-001") == 8
++
++
++def test_partial_batch_when_stock_was_cut_below_reservations(inventory):
++    inventory.reserve("MUG-001", 3)
++    inventory.set_stock("MUG-001", 1)
++    batch = inventory.reserve_batch({"MUG-001": 2}, partial=True)
++    assert batch.reservations == ()
++    assert batch.shortfall == {"MUG-001": 2}
++
++
++def test_release_batch(inventory):
++    batch = inventory.reserve_batch({"TEE-001": 2, "MUG-001": 1})
++    inventory.commit(batch.reservations[0].id)
++    inventory.release_batch(batch)
++    assert [r.status for r in batch.reservations] == [ReservationStatus.COMMITTED, ReservationStatus.RELEASED]
++
++
++@pytest.mark.parametrize("qty", [0, -1])
++def test_quantities_must_be_positive(inventory, qty):
++    with pytest.raises(ValueError):
++        inventory.reserve_batch({"TEE-001": qty})
++
++
++def test_unknown_sku_fails_before_anything_is_held(inventory):
++    with pytest.raises(KeyError):
++        inventory.reserve_batch({"TEE-001": 1, "NOPE": 1}, partial=True)
++    assert inventory.active_reservations() == []

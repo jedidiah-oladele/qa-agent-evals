@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..59ed692 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -157,7 +157,7 @@ class Money:
+         return [Money(sign * Decimal(units) * unit, self.currency) for units in floors]
+ 
+     def __str__(self) -> str:
+-        return f"{self.currency} {round_half_up(self.amount, self.currency)}"
++        return f"{self.currency} {self.amount}"
+ 
+ 
+ def sum_money(values: Sequence[Money], currency: str) -> Money:

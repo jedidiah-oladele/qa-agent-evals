@@ -1,0 +1,13 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..8632c70 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -187,7 +187,7 @@ export class LedgerClient {
+     let cursor: string | null = null;
+     do {
+       const page: Page<T> = await this.request<Page<T>>("GET", path, {
+-        query: cursor === null ? query : { ...query, cursor },
++        query: cursor === null ? query : { cursor },
+       });
+       yield* page.data;
+       cursor = page.next_cursor;

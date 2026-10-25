@@ -1,0 +1,65 @@
+id: wt_023_dates_tests
+title: Write tests for calendar date helpers
+language: typescript
+category: write_tests
+difficulty: easy
+prompt: |
+  `src/dates.ts` holds ledgerkit's calendar-date helpers (leap years, month
+  lengths, parsing and formatting `YYYY-MM-DD` strings, epoch days, adding
+  days and months, comparing dates). Billing periods and invoice due dates are
+  built on it, but its test file was deleted by mistake and it now has no
+  direct tests.
+
+  Please write `tests/dates.test.ts` (vitest) with tests that would catch
+  regressions in this module: invalid inputs that must be rejected, month and
+  year boundaries, leap years, end-of-month clamping in `addMonths`, signs of
+  differences, and formatting. Read the module to decide what the correct
+  behaviour is.
+
+  The tests must pass against the current code. Only add tests; do not change
+  anything under `src/`.
+setup:
+  apply_patch: null
+  remove_paths: [tests/dates.test.ts]
+test_cmd: npx vitest run
+primary:
+  type: mutation
+  test_files: [tests/dates.test.ts]
+  min_mutant_kill_rate: 0.75
+rubric:
+  - id: tests_only
+    criterion: The diff changes test files only; library source is untouched.
+    weight: 0.5
+    grader: auto
+    check: {name: tests_only}
+  - id: enough_tests
+    criterion: tests/dates.test.ts defines at least 8 tests.
+    weight: 0.5
+    grader: auto
+    check: {name: min_tests, params: {file: tests/dates.test.ts, count: 8}}
+  - id: leap_and_clamp
+    criterion: >-
+      The tests cover the century leap-year rules (e.g. 1900 or 2100 not leap, 2000 leap)
+      and end-of-month clamping in `addMonths` for both a leap and a non-leap February.
+    weight: 1.0
+    grader: judge
+  - id: invalid_dates
+    criterion: >-
+      The tests assert that calendar-invalid but well-formed strings (such as 2026-02-29,
+      2026-04-31 or 2026-11-31) and malformed strings (such as 2026-1-01) are rejected
+      with `ValidationError`.
+    weight: 1.0
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/happy_path_only.patch, flawed/inclusive_day_count.patch, flawed/assertion_light.patch]
+mutants:
+  - mutants/leap_year_ignores_400_rule.patch
+  - mutants/november_has_31_days.patch
+  - mutants/parse_accepts_day_31_everywhere.patch
+  - mutants/add_months_rolls_over.patch
+  - mutants/days_between_reversed.patch
+  - mutants/year_not_zero_padded.patch
+  - mutants/loose_date_pattern.patch
+  - mutants/fractional_months_accepted.patch

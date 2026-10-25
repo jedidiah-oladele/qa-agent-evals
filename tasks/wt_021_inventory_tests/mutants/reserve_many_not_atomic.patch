@@ -1,0 +1,17 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..9395bbe 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -111,12 +111,6 @@ class Inventory:
+     def reserve_many(self, items: Mapping[str, int], *, ttl: timedelta | None = None) -> list[Reservation]:
+         """Reserve several SKUs at once. Either every SKU is reserved or none is."""
+         self.expire_stale()
+-        for sku, quantity in items.items():
+-            if quantity <= 0:
+-                raise ValueError(f"{sku}: quantity must be positive")
+-            available = self.available(sku)
+-            if quantity > available:
+-                raise InsufficientStockError(sku, quantity, available)
+         return [self.reserve(sku, quantity, ttl=ttl) for sku, quantity in items.items()]
+ 
+     def get(self, reservation_id: str) -> Reservation:

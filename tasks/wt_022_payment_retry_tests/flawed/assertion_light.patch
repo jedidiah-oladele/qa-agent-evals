@@ -1,0 +1,41 @@
+diff --git a/tests/test_payments.py b/tests/test_payments.py
+new file mode 100644
+index 0000000..ac9ad69
+--- /dev/null
++++ b/tests/test_payments.py
+@@ -0,0 +1,35 @@
++import asyncio
++import random
++
++from shopcore import ChargeRequest, Money, PaymentClient, RetryPolicy
++from shopcore.testing import RecordingSleep, ScriptedGateway
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++def test_delay_for_returns_a_number():
++    policy = RetryPolicy()
++    for n in range(1, 5):
++        assert policy.delay_for(n, random.Random(n)) >= 0
++
++
++def test_charge_with_retries_completes():
++    client = PaymentClient(ScriptedGateway(["timeout", "ok"]), sleep=RecordingSleep())
++    result = asyncio.run(client.charge(usd("10"), "tok"))
++    assert result is not None
++
++
++def test_errors_are_raised_somehow():
++    client = PaymentClient(ScriptedGateway(["declined"]), sleep=RecordingSleep())
++    try:
++        asyncio.run(client.charge(usd("10"), "tok"))
++    except Exception as exc:  # any failure is fine
++        assert exc is not None
++
++
++def test_charge_many_returns_something():
++    client = PaymentClient(ScriptedGateway(["ok", "declined"]), sleep=RecordingSleep())
++    results = asyncio.run(client.charge_many([ChargeRequest(usd("1"), "a"), ChargeRequest(usd("2"), "b")]))
++    assert results

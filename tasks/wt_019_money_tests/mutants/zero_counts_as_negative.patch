@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..0db3aac 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -114,7 +114,7 @@ class Money:
+         return self.amount == 0
+ 
+     def is_negative(self) -> bool:
+-        return self.amount < 0
++        return self.amount <= 0
+ 
+     def quantize(self) -> Money:
+         """Round to the currency's minor unit (half away from zero)."""

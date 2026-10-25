@@ -1,0 +1,69 @@
+id: wt_020_discount_rules_tests
+title: Write tests for discount rules and stacking
+language: python
+category: write_tests
+difficulty: medium
+prompt: |
+  We are about to refactor `shopcore.discounts` (percentage, fixed-amount and
+  buy-X-get-Y rules, plus `apply_discounts`, which decides how discounts stack).
+  Its tests were deleted along with an abandoned rewrite, so right now nothing
+  protects the current behaviour.
+
+  Please write `tests/test_discounts.py`: a test suite that pins down the
+  behaviour documented in the module so the refactor cannot silently change
+  what customers are charged. Pay attention to how stackable and exclusive
+  discounts interact, the order discounts run in, when a discount expires,
+  caps and minimum-subtotal thresholds, category restrictions, and how
+  buy-X-get-Y counts free units. Exact amounts matter. The shared fixtures in
+  `tests/conftest.py` (a `catalog` with a few products and a `clock`) are
+  available.
+
+  The tests must pass against the current code. Only add tests; do not change
+  anything under `src/`.
+setup:
+  apply_patch: null
+  remove_paths: [tests/test_discounts.py, tests/test_discounts_bxgy.py]
+test_cmd: pytest -q
+primary:
+  type: mutation
+  test_files: [tests/test_discounts.py]
+  min_mutant_kill_rate: 0.8
+rubric:
+  - id: tests_only
+    criterion: The diff changes test files only; library source is untouched.
+    weight: 0.5
+    grader: auto
+    check: {name: tests_only}
+  - id: enough_tests
+    criterion: tests/test_discounts.py defines at least 12 tests.
+    weight: 0.5
+    grader: auto
+    check: {name: min_tests, params: {file: tests/test_discounts.py, count: 12}}
+  - id: boundaries_pinned
+    criterion: >-
+      The tests pin at least two boundaries exactly: a discount whose `expires_at` equals
+      `now` is not applied, and an order whose gross subtotal exactly equals `min_subtotal`
+      qualifies.
+    weight: 1.0
+    grader: judge
+  - id: stacking_semantics
+    criterion: >-
+      The tests check stacking semantics with exact amounts: a later stackable discount is
+      computed on what earlier ones left (not on gross), equal priorities are ordered by
+      code, and a stacked combination wins a tie against an exclusive discount.
+    weight: 1.0
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/happy_path_only.patch, flawed/min_subtotal_on_remaining.patch, flawed/assertion_light.patch]
+mutants:
+  - mutants/expiry_inclusive.patch
+  - mutants/priority_without_code_tiebreak.patch
+  - mutants/exclusive_wins_ties.patch
+  - mutants/percentage_min_subtotal_on_remaining.patch
+  - mutants/fixed_min_subtotal_exclusive.patch
+  - mutants/bxgy_counts_partial_groups.patch
+  - mutants/percentage_on_gross.patch
+  - mutants/category_ignored_in_allocation.patch
+  - mutants/zero_discounts_reported.patch

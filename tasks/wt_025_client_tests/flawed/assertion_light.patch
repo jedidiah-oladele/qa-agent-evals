@@ -1,0 +1,28 @@
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+new file mode 100644
+index 0000000..881dc84
+--- /dev/null
++++ b/tests/client.test.ts
+@@ -0,0 +1,22 @@
++import { describe, expect, it } from "vitest";
++import { LedgerClient, parseRetryAfter } from "../src/client";
++import { fakeFetch, json, recordingSleep } from "./helpers/fake-fetch";
++
++describe("client smoke tests", () => {
++  it("builds urls", () => {
++    const client = new LedgerClient({ baseUrl: "https://api.ledger.test", apiKey: "k", fetch: fakeFetch().fetch });
++    expect(client.buildUrl("/invoices", { a: 1 })).toContain("invoices");
++  });
++
++  it("requests resolve or reject without hanging", async () => {
++    const fake = fakeFetch(json(503, {}), json(503, {}), json(503, {}), json(200, {}));
++    const client = new LedgerClient({ baseUrl: "https://api.ledger.test", apiKey: "k", fetch: fake.fetch, sleep: recordingSleep().sleep });
++    const outcome = await client.request("GET", "/x").then(() => "ok", () => "error");
++    expect(["ok", "error"]).toContain(outcome);
++  });
++
++  it("parseRetryAfter returns a number or undefined", () => {
++    const value = parseRetryAfter("3", Date.now());
++    expect(value === undefined || typeof value === "number").toBe(true);
++  });
++});

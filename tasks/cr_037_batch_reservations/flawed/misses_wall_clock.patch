@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..0e01d18
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review
++
++- `src/shopcore/inventory.py:160` - If a later SKU is short, `reserve()` raises after earlier SKUs were already reserved, and nothing releases them: the batch is not all-or-nothing.
++- `src/shopcore/inventory.py:166` - `remaining = items` aliases the caller's dict, so the caller's cart is decremented in place.

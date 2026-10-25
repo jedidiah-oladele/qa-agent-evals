@@ -1,0 +1,13 @@
+diff --git a/src/rounding.ts b/src/rounding.ts
+index 6cc520b..7d9bfdf 100644
+--- a/src/rounding.ts
++++ b/src/rounding.ts
+@@ -12,7 +12,7 @@ export function roundToInteger(value: number, mode: RoundingMode = "half-up"): n
+   if (!Number.isFinite(value)) {
+     throw new RangeError(`cannot round ${value}`);
+   }
+-  const normalized = Number(value.toPrecision(12));
++  const normalized = value;
+   switch (mode) {
+     case "floor":
+       return Math.floor(normalized) + 0;

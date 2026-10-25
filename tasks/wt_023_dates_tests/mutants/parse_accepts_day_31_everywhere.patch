@@ -1,0 +1,13 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..16c65e5 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -32,7 +32,7 @@ export function parseDate(text: ISODate): DateParts {
+   const year = Number(match[1]);
+   const month = Number(match[2]);
+   const day = Number(match[3]);
+-  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
++  if (month < 1 || month > 12 || day < 1 || day > 31) {
+     throw new ValidationError(`invalid calendar date: ${text}`);
+   }
+   return { year, month, day };

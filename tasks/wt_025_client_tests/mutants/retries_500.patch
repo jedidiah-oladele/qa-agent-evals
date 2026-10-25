@@ -1,0 +1,13 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..fa4fa62 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -37,7 +37,7 @@ export interface InvoiceDTO {
+   readonly status: string;
+ }
+ 
+-const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
++const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+ 
+ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+ 

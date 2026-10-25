@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..e480feb 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -128,7 +128,7 @@ class PaymentClient:
+             async with semaphore:
+                 try:
+                     return await self.charge(request.amount, request.token, idempotency_key=request.idempotency_key)
+-                except PaymentError as exc:
++                except (TransientPaymentError, PaymentRetryExhaustedError) as exc:
+                     return exc
+ 
+         return list(await asyncio.gather(*(one(r) for r in requests)))

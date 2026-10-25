@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..8eb5271 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -40,7 +40,7 @@ class Reservation:
+         return (
+             self.status is ReservationStatus.ACTIVE
+             and self.expires_at is not None
+-            and now >= self.expires_at
++            and now > self.expires_at
+         )
+ 
+ 

@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..fd19243 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -170,7 +170,7 @@ def apply_discounts(lines: Sequence[LineItem], discounts: Sequence[Discount], *,
+     if not lines:
+         return DiscountResult([])
+     currency = lines[0].gross.currency
+-    active = sorted((d for d in discounts if d.is_active(now)), key=lambda d: (d.priority, d.code))
++    active = sorted((d for d in discounts if d.is_active(now)), key=lambda d: d.priority)
+     stackable = [d for d in active if d.stackable]
+     exclusive = [d for d in active if not d.stackable]
+ 

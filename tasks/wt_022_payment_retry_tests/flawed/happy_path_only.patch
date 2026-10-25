@@ -1,0 +1,55 @@
+diff --git a/tests/test_payments.py b/tests/test_payments.py
+new file mode 100644
+index 0000000..8d3d719
+--- /dev/null
++++ b/tests/test_payments.py
+@@ -0,0 +1,49 @@
++import asyncio
++import random
++
++import pytest
++
++from shopcore import ChargeRequest, Money, PaymentClient, PaymentRetryExhaustedError, PermanentPaymentError, RetryPolicy
++from shopcore.testing import RecordingSleep, ScriptedGateway
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++def make_client(script):
++    gateway = ScriptedGateway(script)
++    sleep = RecordingSleep()
++    return PaymentClient(gateway, RetryPolicy(jitter=0), sleep=sleep, rng=random.Random(1)), gateway, sleep
++
++
++def test_charge_succeeds():
++    client, gateway, _ = make_client([])
++    result = asyncio.run(client.charge(usd("10"), "tok"))
++    assert result.charge_id == "ch_0001"
++    assert result.attempts == 1
++
++
++def test_retry_then_success():
++    client, gateway, sleep = make_client(["timeout", "ok"])
++    result = asyncio.run(client.charge(usd("10"), "tok"))
++    assert result.attempts == 2
++    assert sleep.delays == pytest.approx([0.2])
++
++
++def test_declined():
++    client, _, _ = make_client(["declined"])
++    with pytest.raises(PermanentPaymentError):
++        asyncio.run(client.charge(usd("10"), "tok"))
++
++
++def test_gives_up():
++    client, _, _ = make_client(["timeout"] * 4)
++    with pytest.raises(PaymentRetryExhaustedError):
++        asyncio.run(client.charge(usd("10"), "tok"))
++
++
++def test_charge_many():
++    client, _, _ = make_client([])
++    results = asyncio.run(client.charge_many([ChargeRequest(usd("1"), "a"), ChargeRequest(usd("2"), "b")]))
++    assert len(results) == 2

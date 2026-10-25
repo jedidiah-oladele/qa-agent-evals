@@ -1,0 +1,54 @@
+diff --git a/tests/test_money.py b/tests/test_money.py
+new file mode 100644
+index 0000000..64efc48
+--- /dev/null
++++ b/tests/test_money.py
+@@ -0,0 +1,48 @@
++from decimal import Decimal
++
++import pytest
++
++from shopcore import CurrencyMismatchError, Money, sum_money
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++def test_create_money():
++    assert Money.of("1.10", "USD").amount == Decimal("1.10")
++    assert Money.of(3, "EUR").currency == "EUR"
++
++
++def test_add_and_subtract():
++    assert usd("1.25") + usd("2.50") == usd("3.75")
++    assert usd("5.00") - usd("1.50") == usd("3.50")
++
++
++def test_multiply():
++    assert usd("2.50") * 3 == usd("7.50")
++
++
++def test_add_different_currencies_fails():
++    with pytest.raises(CurrencyMismatchError):
++        usd("1") + Money.of("1", "EUR")
++
++
++def test_quantize():
++    assert usd("2.344").quantize() == usd("2.34")
++    assert usd("2.346").quantize() == usd("2.35")
++
++
++def test_allocate_even_split():
++    parts = usd("9").allocate([1, 1, 1])
++    assert parts == [usd("3.00")] * 3
++    assert sum_money(parts, "USD") == usd("9")
++
++
++def test_sum_money():
++    assert sum_money([usd("1"), usd("2")], "USD") == usd("3")
++
++
++def test_allocate_uneven_split():
++    parts = usd("10").allocate([1, 1, 1])
++    assert [p.amount for p in parts] == [Decimal("3.34"), Decimal("3.33"), Decimal("3.33")]

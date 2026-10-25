@@ -1,0 +1,28 @@
+diff --git a/tests/dates.test.ts b/tests/dates.test.ts
+new file mode 100644
+index 0000000..a91374c
+--- /dev/null
++++ b/tests/dates.test.ts
+@@ -0,0 +1,22 @@
++import { describe, expect, it } from "vitest";
++import { addDays, addMonths, compareDates, daysBetween, daysInMonth, isLeapYear, parseDate } from "../src/dates";
++
++describe("dates smoke tests", () => {
++  it("functions return values of the right type", () => {
++    expect(typeof isLeapYear(2024)).toBe("boolean");
++    expect(typeof daysInMonth(2026, 2)).toBe("number");
++    expect(parseDate("2026-01-31")).toBeDefined();
++    expect(typeof addDays("2026-01-31", 1)).toBe("string");
++    expect(typeof addMonths("2026-01-31", 1)).toBe("string");
++    expect(typeof daysBetween("2026-01-01", "2026-02-01")).toBe("number");
++  });
++
++  it("does not throw for normal input", () => {
++    expect(() => addMonths("2024-01-31", 1)).not.toThrow();
++    expect(() => compareDates("2026-01-01", "2026-01-02")).not.toThrow();
++  });
++
++  it("throws for garbage", () => {
++    expect(() => parseDate("not a date")).toThrow();
++  });
++});

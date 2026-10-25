@@ -1,0 +1,14 @@
+diff --git a/src/rounding.ts b/src/rounding.ts
+index 6cc520b..2c8b8a2 100644
+--- a/src/rounding.ts
++++ b/src/rounding.ts
+@@ -19,8 +19,7 @@ export function roundToInteger(value: number, mode: RoundingMode = "half-up"): n
+     case "ceil":
+       return Math.ceil(normalized) + 0;
+     case "half-up": {
+-      const rounded = Math.sign(normalized) * Math.round(Math.abs(normalized));
+-      return rounded + 0;
++      return Math.round(normalized) + 0;
+     }
+     case "half-even": {
+       const floor = Math.floor(normalized);

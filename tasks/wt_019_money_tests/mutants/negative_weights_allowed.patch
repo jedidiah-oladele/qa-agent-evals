@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..e10c37c 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -137,8 +137,6 @@ class Money:
+         if not weights:
+             raise ValueError("allocate() needs at least one weight")
+         weights = [_to_decimal(w) for w in weights]
+-        if any(w < 0 for w in weights):
+-            raise ValueError("weights must be non-negative")
+         total_weight = sum(weights, Decimal(0))
+         if total_weight == 0:
+             raise ValueError("at least one weight must be positive")

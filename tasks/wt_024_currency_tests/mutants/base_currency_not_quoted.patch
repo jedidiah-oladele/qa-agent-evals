@@ -1,0 +1,12 @@
+diff --git a/src/currency.ts b/src/currency.ts
+index 6033f5e..9e8b03f 100644
+--- a/src/currency.ts
++++ b/src/currency.ts
+@@ -24,7 +24,6 @@ export class RateTable {
+       }
+       this.rates.set(code, rate);
+     }
+-    this.rates.set(base, 1);
+   }
+ 
+   has(code: string): boolean {

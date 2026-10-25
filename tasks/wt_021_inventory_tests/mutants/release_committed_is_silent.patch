@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..20739d1 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -128,8 +128,6 @@ class Inventory:
+     def release(self, reservation_id: str) -> None:
+         """Give the units back. Releasing twice, or after expiry, is a no-op."""
+         reservation = self.get(reservation_id)
+-        if reservation.status is ReservationStatus.COMMITTED:
+-            raise ReservationError(f"{reservation_id} is already committed")
+         if reservation.status is ReservationStatus.ACTIVE:
+             if reservation.is_expired(self._clock.now()):
+                 reservation.status = ReservationStatus.EXPIRED

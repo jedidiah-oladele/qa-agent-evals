@@ -1,0 +1,14 @@
+diff --git a/src/billing.ts b/src/billing.ts
+index 69e9c16..8b7fa4a 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -39,9 +39,6 @@ export function billingPeriods(anchor: ISODate, until: ISODate, interval: Interv
+ 
+ /** The period (counted from `anchor`) that contains `date`. */
+ export function periodContaining(anchor: ISODate, date: ISODate, interval: Interval): Period {
+-  if (compareDates(date, anchor) < 0) {
+-    throw new ValidationError(`${date} is before the billing anchor ${anchor}`);
+-  }
+   const months = MONTHS[interval];
+   let index = Math.max(0, Math.floor(daysBetween(anchor, date) / (31 * months)) - 1);
+   for (;;) {

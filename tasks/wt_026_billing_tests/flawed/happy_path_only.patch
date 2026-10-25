@@ -1,0 +1,37 @@
+diff --git a/tests/billing.test.ts b/tests/billing.test.ts
+new file mode 100644
+index 0000000..dfbe86e
+--- /dev/null
++++ b/tests/billing.test.ts
+@@ -0,0 +1,31 @@
++import { describe, expect, it } from "vitest";
++import { billingPeriods, nthPeriod, planChangeAdjustment, prorate } from "../src/billing";
++import { money } from "../src/money";
++
++describe("billing", () => {
++  it("computes monthly periods", () => {
++    expect(nthPeriod("2026-01-15", 0, "monthly")).toEqual({ start: "2026-01-15", end: "2026-02-15" });
++    expect(billingPeriods("2026-01-15", "2026-06-15", "monthly")).toHaveLength(5);
++  });
++
++  it("prorates half a month", () => {
++    const april = { start: "2026-04-01", end: "2026-05-01" };
++    expect(prorate(money(3000, "USD"), april, "2026-04-16", "2026-05-01").minor).toBe(1500);
++  });
++
++  it("charges the full price for a full period", () => {
++    const april = { start: "2026-04-01", end: "2026-05-01" };
++    expect(prorate(money(3000, "USD"), april, "2026-04-01", "2026-05-01").minor).toBe(3000);
++  });
++
++  it("computes an upgrade", () => {
++    const result = planChangeAdjustment({
++      oldPrice: money(3000, "USD"),
++      newPrice: money(6000, "USD"),
++      anchor: "2026-01-01",
++      interval: "monthly",
++      changeOn: "2026-04-16",
++    });
++    expect(result.charge.minor).toBeGreaterThan(result.credit.minor);
++  });
++});

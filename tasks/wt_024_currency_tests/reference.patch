@@ -1,0 +1,124 @@
+diff --git a/tests/currency.test.ts b/tests/currency.test.ts
+new file mode 100644
+index 0000000..543e91e
+--- /dev/null
++++ b/tests/currency.test.ts
+@@ -0,0 +1,118 @@
++import { describe, expect, it } from "vitest";
++import { RateTable } from "../src/currency";
++import { RateNotFoundError, UnknownCurrencyError, ValidationError } from "../src/errors";
++import { money } from "../src/money";
++
++const asOf = new Date("2026-10-01T00:00:00Z");
++const table = new RateTable("USD", { EUR: 0.92, GBP: 0.79, JPY: 151.4, KWD: 0.307 }, asOf);
++
++describe("RateTable.rate", () => {
++  it("is 1 for the same currency, including the base", () => {
++    expect(table.rate("EUR", "EUR")).toBe(1);
++    expect(table.rate("USD", "USD")).toBe(1);
++  });
++
++  it("reads direct quotes from the base", () => {
++    expect(table.rate("USD", "EUR")).toBe(0.92);
++    expect(table.rate("USD", "JPY")).toBe(151.4);
++  });
++
++  it("inverts quotes into the base currency", () => {
++    expect(table.rate("EUR", "USD")).toBeCloseTo(1 / 0.92, 12);
++    expect(table.rate("JPY", "USD")).toBeCloseTo(1 / 151.4, 12);
++  });
++
++  it("computes cross rates through the base", () => {
++    expect(table.rate("EUR", "GBP")).toBeCloseTo(0.79 / 0.92, 12);
++    expect(table.rate("GBP", "EUR")).toBeCloseTo(0.92 / 0.79, 12);
++  });
++
++  it("throws RateNotFoundError for currencies without a quote", () => {
++    expect(() => table.rate("USD", "CHF")).toThrow(RateNotFoundError);
++    expect(() => table.rate("CHF", "USD")).toThrow(RateNotFoundError);
++    expect(() => table.convert(money(100, "USD"), "CHF")).toThrow(RateNotFoundError);
++  });
++});
++
++describe("RateTable.convert", () => {
++  it("converts base to quote currency and back", () => {
++    expect(table.convert(money(10_000, "USD"), "EUR")).toEqual(money(9_200, "EUR"));
++    expect(table.convert(money(9_200, "EUR"), "USD")).toEqual(money(10_000, "USD"));
++  });
++
++  it("shifts between currencies with different exponents", () => {
++    expect(table.convert(money(1_000, "USD"), "JPY")).toEqual(money(1_514, "JPY"));
++    expect(table.convert(money(1_514, "JPY"), "USD")).toEqual(money(1_000, "USD"));
++    expect(table.convert(money(1_000, "USD"), "KWD")).toEqual(money(3_070, "KWD"));
++    expect(table.convert(money(3_070, "KWD"), "USD")).toEqual(money(1_000, "USD"));
++  });
++
++  it("converts between two non-base currencies with one final rounding", () => {
++    // 1.00 EUR -> GBP: 100 * 0.79 / 0.92 = 85.869... -> 86
++    expect(table.convert(money(100, "EUR"), "GBP")).toEqual(money(86, "GBP"));
++    // 10.00 GBP -> EUR: 1000 * 0.92 / 0.79 = 1164.55... -> 1165
++    expect(table.convert(money(1_000, "GBP"), "EUR")).toEqual(money(1_165, "EUR"));
++  });
++
++  it("passes the rounding mode through", () => {
++    expect(table.convert(money(100, "EUR"), "GBP", "floor").minor).toBe(85);
++    expect(table.convert(money(1_000, "GBP"), "EUR", "floor").minor).toBe(1_164);
++    expect(table.convert(money(101, "USD"), "EUR", "ceil").minor).toBe(93); // 92.92
++    expect(table.convert(money(101, "USD"), "EUR", "floor").minor).toBe(92);
++  });
++
++  it("rounds exact halves according to the mode", () => {
++    const halves = new RateTable("USD", { EUR: 0.5 }, asOf);
++    expect(halves.convert(money(5, "USD"), "EUR").minor).toBe(3); // 2.5, half-up
++    expect(halves.convert(money(5, "USD"), "EUR", "half-even").minor).toBe(2);
++    expect(halves.convert(money(7, "USD"), "EUR", "half-even").minor).toBe(4); // 3.5
++  });
++
++  it("rounds negative amounts (refunds) half away from zero", () => {
++    const halves = new RateTable("USD", { EUR: 0.5 }, asOf);
++    expect(halves.convert(money(-5, "USD"), "EUR")).toEqual(money(-3, "EUR"));
++    expect(halves.convert(money(-1_000, "USD"), "EUR")).toEqual(money(-500, "EUR"));
++    expect(table.convert(money(-100, "EUR"), "GBP")).toEqual(money(-86, "GBP"));
++  });
++
++  it("is not fooled by floating point noise in the product", () => {
++    // 100 * 1.005 is 100.49999999999999 in binary floating point; the true value is 100.5.
++    const noisy = new RateTable("USD", { EUR: 1.005 }, asOf);
++    expect(noisy.convert(money(100, "USD"), "EUR")).toEqual(money(101, "EUR"));
++  });
++
++  it("returns the same object for same-currency conversion", () => {
++    const m = money(123, "EUR");
++    expect(table.convert(m, "EUR")).toBe(m);
++  });
++});
++
++describe("RateTable validation and staleness", () => {
++  it("rejects non-positive and non-finite rates", () => {
++    expect(() => new RateTable("USD", { EUR: 0 }, asOf)).toThrow(ValidationError);
++    expect(() => new RateTable("USD", { EUR: -0.92 }, asOf)).toThrow(ValidationError);
++    expect(() => new RateTable("USD", { EUR: Number.NaN }, asOf)).toThrow(ValidationError);
++    expect(() => new RateTable("USD", { EUR: Number.POSITIVE_INFINITY }, asOf)).toThrow(ValidationError);
++  });
++
++  it("rejects unknown currency codes", () => {
++    expect(() => new RateTable("USD", { XYZ: 1 }, asOf)).toThrow(UnknownCurrencyError);
++    expect(() => new RateTable("XYZ", {}, asOf)).toThrow(UnknownCurrencyError);
++  });
++
++  it("knows the base currency and its quotes", () => {
++    expect(table.has("USD")).toBe(true);
++    expect(table.has("JPY")).toBe(true);
++    expect(table.has("CHF")).toBe(false);
++    const onlyBase = new RateTable("EUR", {}, asOf);
++    expect(onlyBase.has("EUR")).toBe(true);
++    expect(onlyBase.rate("EUR", "EUR")).toBe(1);
++  });
++
++  it("reports staleness strictly after the max age", () => {
++    const day = 86_400_000;
++    expect(table.isStale(asOf, day)).toBe(false);
++    expect(table.isStale(new Date(asOf.getTime() + day), day)).toBe(false);
++    expect(table.isStale(new Date(asOf.getTime() + day + 1), day)).toBe(true);
++  });
++});

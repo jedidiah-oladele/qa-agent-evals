@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..cb5c7d4 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -151,8 +151,6 @@ def _run(lines: Sequence[LineItem], discounts: Sequence[Discount], currency: str
+         amounts = discount.compute(lines, remaining)
+         amounts = [a.min(r) for a, r in zip(amounts, remaining)]
+         total = sum_money(amounts, currency)
+-        if total.is_zero():
+-            continue
+         remaining = [r - a for r, a in zip(remaining, amounts)]
+         per_line = [p + a for p, a in zip(per_line, amounts)]
+         applied.append(AppliedDiscount(discount.code, total))

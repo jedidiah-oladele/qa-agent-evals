@@ -1,0 +1,11 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..c51ea27
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,5 @@
++# Review
++
++- `src/shopcore/inventory.py:139` - Reservations are created one SKU at a time, so when a later SKU is short the earlier ones remain held; the batch is not atomic.
++- `src/shopcore/inventory.py:166` - `remaining = items` aliases the caller's dict, so the caller's cart is decremented in place.
++- `src/shopcore/inventory.py:185` - Uses `datetime.now(UTC)` instead of the injected clock, so partial reservations expire on wall-clock time.

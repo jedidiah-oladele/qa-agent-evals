@@ -1,0 +1,67 @@
+id: wt_026_billing_tests
+title: Write tests for billing periods, proration and plan changes
+language: typescript
+category: write_tests
+difficulty: medium
+prompt: |
+  `src/billing.ts` computes subscription billing periods from an anchor date,
+  finds the period that contains a date, prorates a price by active days, and
+  computes the credit/charge for a mid-period plan change. Its two test files
+  were lost when the module was moved, and the subscriptions team is about to
+  add weekly plans, so we need the current behaviour pinned first.
+
+  Please write `tests/billing.test.ts` (vitest) with tests that would catch
+  regressions in this module: month-end anchors, which period a boundary date
+  belongs to (periods are half-open: start inclusive, end exclusive), the
+  `until` cut-off in `billingPeriods`, proration (overlap, clamping to the
+  period, rounding), and plan-change adjustments for upgrades and downgrades.
+  Assert exact dates and exact minor-unit amounts.
+
+  The tests must pass against the current code. Only add tests; do not change
+  anything under `src/`.
+setup:
+  apply_patch: null
+  remove_paths: [tests/billing.test.ts, tests/billing-plan-change.test.ts]
+test_cmd: npx vitest run
+primary:
+  type: mutation
+  test_files: [tests/billing.test.ts]
+  min_mutant_kill_rate: 0.8
+rubric:
+  - id: tests_only
+    criterion: The diff changes test files only; library source is untouched.
+    weight: 0.5
+    grader: auto
+    check: {name: tests_only}
+  - id: enough_tests
+    criterion: tests/billing.test.ts defines at least 10 tests.
+    weight: 0.5
+    grader: auto
+    check: {name: min_tests, params: {file: tests/billing.test.ts, count: 10}}
+  - id: half_open_boundaries
+    criterion: >-
+      The tests check a date that equals a period's end (it belongs to the next period)
+      and an `until` equal to a period start (that period is excluded), with exact dates.
+    weight: 1.0
+    grader: judge
+  - id: plan_change_direction
+    criterion: >-
+      The plan-change tests assert exact credit, charge and net for both an upgrade and a
+      downgrade, so a credit computed for the used (rather than unused) part or a flipped
+      net sign would fail.
+    weight: 1.0
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/happy_path_only.patch, flawed/end_day_in_closing_period.patch, flawed/assertion_light.patch]
+mutants:
+  - mutants/periods_chain_from_previous_boundary.patch
+  - mutants/billing_periods_include_until.patch
+  - mutants/period_end_inclusive.patch
+  - mutants/before_anchor_not_rejected.patch
+  - mutants/prorate_counts_end_day.patch
+  - mutants/prorate_rounds_down.patch
+  - mutants/prorate_start_not_clamped.patch
+  - mutants/credit_for_used_time.patch
+  - mutants/net_sign_flipped.patch

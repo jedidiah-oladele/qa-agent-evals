@@ -1,0 +1,13 @@
+diff --git a/src/currency.ts b/src/currency.ts
+index 6033f5e..afb9a13 100644
+--- a/src/currency.ts
++++ b/src/currency.ts
+@@ -50,7 +50,7 @@ export class RateTable {
+     if (amount.currency === to) return amount;
+     const fromExp = currencyInfo(amount.currency).exponent;
+     const toExp = currencyInfo(to).exponent;
+-    const value = amount.minor * this.rate(amount.currency, to) * 10 ** (toExp - fromExp);
++    const value = amount.minor * this.rate(amount.currency, to) * 10 ** (fromExp - toExp);
+     return money(roundToInteger(value, mode), to);
+   }
+ 

@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..c2a12e4 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -123,7 +123,7 @@ class BuyXGetYDiscount(Discount):
+             if line.sku != self.sku:
+                 result.append(Money.zero(left.currency))
+                 continue
+-            free_units = (line.quantity // (self.buy + self.get)) * self.get
++            free_units = (line.quantity // self.buy) * self.get
+             result.append((line.product.unit_price * free_units).min(left))
+         return result
+ 

@@ -1,0 +1,65 @@
+id: wt_019_money_tests
+title: Write a regression suite for shopcore.money
+language: python
+category: write_tests
+difficulty: easy
+prompt: |
+  `shopcore.money` (the `Money` value type, `round_half_up`, `minor_unit`,
+  `Money.allocate` and `sum_money`) is used by every other module in shopcore,
+  but its test file was lost in a bad merge and the module currently has no
+  tests at all.
+
+  Please write `tests/test_money.py` with tests that would catch regressions in
+  the module's documented behaviour: construction and type checks, currency
+  handling, arithmetic and comparisons, rounding to each currency's minor unit,
+  string formatting, and splitting an amount with `allocate`. Read the module
+  and its docstrings to decide what the correct behaviour is.
+
+  The tests must pass against the current code. Only add tests; do not change
+  anything under `src/`.
+setup:
+  apply_patch: null
+  remove_paths: [tests/test_money.py]
+test_cmd: pytest -q
+primary:
+  type: mutation
+  test_files: [tests/test_money.py]
+  min_mutant_kill_rate: 0.8
+rubric:
+  - id: tests_only
+    criterion: The diff changes test files only; library source is untouched.
+    weight: 0.5
+    grader: auto
+    check: {name: tests_only}
+  - id: enough_tests
+    criterion: tests/test_money.py defines at least 10 tests.
+    weight: 0.5
+    grader: auto
+    check: {name: min_tests, params: {file: tests/test_money.py, count: 10}}
+  - id: half_unit_rounding
+    criterion: >-
+      The tests pin exact half-minor-unit rounding (for example 0.125 USD -> 0.13 and
+      -0.125 -> -0.13), including a currency other than USD (JPY or KWD), with exact
+      Decimal expectations.
+    weight: 1.0
+    grader: judge
+  - id: allocate_remainders
+    criterion: >-
+      The tests check exact `allocate` results where leftover minor units must go to the
+      largest remainders, with ties to the earliest share, and that the parts sum to the
+      rounded amount.
+    weight: 1.0
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 30, timeout_s: 900}
+reference: reference.patch
+flawed: [flawed/happy_path_only.patch, flawed/expects_bankers_rounding.patch, flawed/assertion_light.patch]
+mutants:
+  - mutants/quantize_half_even.patch
+  - mutants/accepts_bool_amounts.patch
+  - mutants/compare_ignores_currency.patch
+  - mutants/allocate_ties_to_last_share.patch
+  - mutants/allocate_leftover_by_weight.patch
+  - mutants/str_not_rounded.patch
+  - mutants/zero_counts_as_negative.patch
+  - mutants/negative_weights_allowed.patch

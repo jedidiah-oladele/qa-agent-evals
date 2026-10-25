@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..a1837e1 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -69,7 +69,7 @@ class RetryPolicy:
+             raise ValueError("retry_number starts at 1")
+         delay = min(self.base_delay * self.multiplier ** (retry_number - 1), self.max_delay)
+         if self.jitter:
+-            delay *= 1 + rng.uniform(-self.jitter, self.jitter)
++            delay *= 1 + rng.uniform(0, self.jitter)
+         return delay
+ 
+ 

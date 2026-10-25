@@ -1,0 +1,285 @@
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+new file mode 100644
+index 0000000..6b6077c
+--- /dev/null
++++ b/tests/client.test.ts
+@@ -0,0 +1,279 @@
++import { describe, expect, it } from "vitest";
++import { LedgerClient, parseRetryAfter } from "../src/client";
++import { ApiError, NetworkError, TimeoutError, ValidationError } from "../src/errors";
++import { fakeFetch, json, recordingSleep } from "./helpers/fake-fetch";
++
++const NOW = Date.parse("2026-10-20T12:00:00Z");
++
++type Options = ConstructorParameters<typeof LedgerClient>[0];
++
++function setup(responders: Parameters<typeof fakeFetch>, extra: Partial<Options> = {}) {
++  const fake = fakeFetch(...responders);
++  const { sleep, delays } = recordingSleep();
++  const client = new LedgerClient({
++    baseUrl: "https://api.ledger.test/v1/",
++    apiKey: "sk_test",
++    fetch: fake.fetch,
++    sleep,
++    now: () => NOW,
++    ...extra,
++  });
++  return { client, fake, delays };
++}
++
++async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
++  const items: T[] = [];
++  for await (const item of iterable) items.push(item);
++  return items;
++}
++
++describe("constructor and buildUrl", () => {
++  it("validates options", () => {
++    expect(() => new LedgerClient({ baseUrl: "ftp://x", apiKey: "k" })).toThrow(ValidationError);
++    expect(() => new LedgerClient({ baseUrl: "api.ledger.test", apiKey: "k" })).toThrow(ValidationError);
++    expect(() => new LedgerClient({ baseUrl: "https://x", apiKey: "" })).toThrow(ValidationError);
++  });
++
++  it("joins base and path with exactly one slash", () => {
++    const { client } = setup([]);
++    expect(client.buildUrl("/invoices")).toBe("https://api.ledger.test/v1/invoices");
++    expect(client.buildUrl("invoices")).toBe("https://api.ledger.test/v1/invoices");
++    const many = new LedgerClient({ baseUrl: "http://localhost:8080//", apiKey: "k", fetch: fakeFetch().fetch });
++    expect(many.buildUrl("/x")).toBe("http://localhost:8080/x");
++  });
++
++  it("encodes query values, repeats array keys and skips undefined and null", () => {
++    const { client } = setup([]);
++    expect(
++      client.buildUrl("/search", { q: "a&b c", tag: ["x/y", 2], empty: undefined, none: null, flag: false, n: 0 }),
++    ).toBe("https://api.ledger.test/v1/search?q=a%26b%20c&tag=x%2Fy&tag=2&flag=false&n=0");
++    expect(client.buildUrl("/x", { a: null, b: undefined })).toBe("https://api.ledger.test/v1/x");
++  });
++});
++
++describe("request basics", () => {
++  it("sends auth and JSON headers and parses the body", async () => {
++    const { client, fake } = setup([json(200, { id: "inv_1" })]);
++    await expect(client.request("POST", "/invoices", { body: { a: 1 } })).resolves.toEqual({ id: "inv_1" });
++    const init = fake.calls[0]!.init;
++    expect(fake.calls[0]!.url).toBe("https://api.ledger.test/v1/invoices");
++    expect(init.method).toBe("POST");
++    expect(init.body).toBe('{"a":1}');
++    expect(init.headers).toEqual({
++      Authorization: "Bearer sk_test",
++      Accept: "application/json",
++      "Content-Type": "application/json",
++    });
++  });
++
++  it("sends no body or content type without a body", async () => {
++    const { client, fake } = setup([json(200, {})]);
++    await client.request("GET", "/x");
++    expect(fake.calls[0]!.init.body).toBeUndefined();
++    expect(fake.calls[0]!.init.headers).not.toHaveProperty("Content-Type");
++  });
++
++  it("returns undefined for 204", async () => {
++    const { client } = setup([() => new Response(null, { status: 204 })]);
++    await expect(client.request("DELETE", "/invoices/1")).resolves.toBeUndefined();
++  });
++
++  it("maps error bodies to ApiError", async () => {
++    const { client } = setup([json(422, { error: { code: "invalid_currency", message: "XYZ is not supported" } })]);
++    const error = await client.request("GET", "/x").catch((e) => e);
++    expect(error).toBeInstanceOf(ApiError);
++    expect(error).toMatchObject({ status: 422, code: "invalid_currency", message: "XYZ is not supported" });
++  });
++
++  it("falls back to the status line for non-JSON errors", async () => {
++    const { client, fake } = setup([
++      () => new Response("<html>", { status: 500, statusText: "Internal Server Error" }),
++    ]);
++    const error = await client.request("GET", "/x").catch((e) => e);
++    expect(error).toMatchObject({ status: 500, code: "http_error", message: "500 Internal Server Error" });
++    expect(fake.calls).toHaveLength(1);
++  });
++});
++
++describe("retries", () => {
++  it("retries 429, 502, 503 and 504 with exponential backoff", async () => {
++    const { client, fake, delays } = setup(
++      [json(429, {}), json(502, {}), json(503, {}), json(504, {}), json(200, { ok: true })],
++      { maxRetries: 4 },
++    );
++    await expect(client.request("GET", "/x")).resolves.toEqual({ ok: true });
++    expect(delays).toEqual([250, 500, 1000, 2000]);
++    expect(fake.calls).toHaveLength(5);
++  });
++
++  it("uses retryBaseMs for the first wait", async () => {
++    const { client, delays } = setup([json(503, {}), json(200, {})], { retryBaseMs: 100 });
++    await client.request("GET", "/x");
++    expect(delays).toEqual([100]);
++  });
++
++  it("makes exactly 1 + maxRetries attempts, then surfaces the last error", async () => {
++    const { client, fake, delays } = setup([
++      json(503, {}),
++      json(503, {}),
++      json(503, { error: { code: "down", message: "down" } }),
++      json(200, {}),
++    ]);
++    const error = await client.request("GET", "/x").catch((e) => e);
++    expect(error).toBeInstanceOf(ApiError);
++    expect(error).toMatchObject({ status: 503, code: "down" });
++    expect(fake.calls).toHaveLength(3);
++    expect(delays).toEqual([250, 500]);
++  });
++
++  it("does not retry when maxRetries is 0", async () => {
++    const { client, fake } = setup([json(503, {}), json(200, {})], { maxRetries: 0 });
++    await expect(client.request("GET", "/x")).rejects.toMatchObject({ status: 503 });
++    expect(fake.calls).toHaveLength(1);
++  });
++
++  it("retries plain 500 errors as well", async () => {
++    const { client, fake } = setup([json(500, {}), json(200, { ok: true })]);
++    await expect(client.request("GET", "/x")).resolves.toEqual({ ok: true });
++    expect(fake.calls).toHaveLength(2);
++  });
++
++  it.each([400, 401, 404, 409, 501])("does not retry status %i", async (status) => {
++    const { client, fake, delays } = setup([json(status, {}), json(200, {})]);
++    await expect(client.request("GET", "/x")).rejects.toMatchObject({ status });
++    expect(fake.calls).toHaveLength(1);
++    expect(delays).toEqual([]);
++  });
++
++  it("caps backoff at maxRetryDelayMs", async () => {
++    const { client, delays } = setup([json(503, {}), json(503, {}), json(503, {}), json(200, {})], {
++      maxRetries: 3,
++      retryBaseMs: 400,
++      maxRetryDelayMs: 1000,
++    });
++    await client.request("GET", "/x");
++    expect(delays).toEqual([400, 800, 1000]);
++  });
++
++  it("retries network errors and surfaces the last one as NetworkError", async () => {
++    const boom = () => {
++      throw new TypeError("socket hang up");
++    };
++    const { client, fake, delays } = setup([boom, boom], { maxRetries: 1 });
++    const error = await client.request("GET", "/x").catch((e) => e);
++    expect(error).toBeInstanceOf(NetworkError);
++    expect(error.message).toContain("socket hang up");
++    expect(fake.calls).toHaveLength(2);
++    expect(delays).toEqual([250]);
++  });
++
++  it("recovers after a network error", async () => {
++    const boom = () => {
++      throw new TypeError("ECONNRESET");
++    };
++    const { client } = setup([boom, json(200, { ok: 1 })]);
++    await expect(client.request("GET", "/x")).resolves.toEqual({ ok: 1 });
++  });
++
++  it("reports aborted requests as TimeoutError, not NetworkError", async () => {
++    const hang = ({ init }: { init: RequestInit }) =>
++      new Promise<Response>((_, reject) => {
++        init.signal!.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
++      });
++    const { client } = setup([hang], { timeoutMs: 5, maxRetries: 0 });
++    const error = await client.request("GET", "/slow").catch((e) => e);
++    expect(error).toBeInstanceOf(TimeoutError);
++    expect(error).not.toBeInstanceOf(NetworkError);
++  });
++});
++
++describe("Retry-After", () => {
++  it("parses delay-seconds and HTTP-dates", () => {
++    expect(parseRetryAfter("3", NOW)).toBe(3000);
++    expect(parseRetryAfter(" 0 ", NOW)).toBe(0);
++    expect(parseRetryAfter("Tue, 20 Oct 2026 12:00:07 GMT", NOW)).toBe(7000);
++  });
++
++  it("treats past dates as zero and junk as absent", () => {
++    expect(parseRetryAfter("Tue, 20 Oct 2026 11:00:00 GMT", NOW)).toBe(0);
++    expect(parseRetryAfter("soon", NOW)).toBeUndefined();
++    expect(parseRetryAfter("-5", NOW)).toBeUndefined();
++    expect(parseRetryAfter("1.5", NOW)).toBeUndefined();
++    expect(parseRetryAfter(null, NOW)).toBeUndefined();
++  });
++
++  it("waits as long as the server asks", async () => {
++    const { client, delays } = setup([json(429, {}, { "Retry-After": "2" }), json(200, { ok: 1 })]);
++    await expect(client.request("GET", "/x")).resolves.toEqual({ ok: 1 });
++    expect(delays).toEqual([2000]);
++  });
++
++  it("retries immediately when the date has passed", async () => {
++    const { client, delays } = setup([
++      json(503, {}, { "Retry-After": "Tue, 20 Oct 2026 11:59:00 GMT" }),
++      json(200, {}),
++    ]);
++    await client.request("GET", "/x");
++    expect(delays).toEqual([0]);
++  });
++
++  it("caps server-requested waits at maxRetryDelayMs", async () => {
++    const { client, delays } = setup([json(429, {}, { "Retry-After": "3600" }), json(200, {})], {
++      maxRetryDelayMs: 10_000,
++    });
++    await client.request("GET", "/x");
++    expect(delays).toEqual([10_000]);
++  });
++
++  it("falls back to exponential backoff without a usable header", async () => {
++    const { client, delays } = setup([json(429, {}, { "Retry-After": "later" }), json(503, {}), json(200, {})]);
++    await client.request("GET", "/x");
++    expect(delays).toEqual([250, 500]);
++  });
++});
++
++describe("resource helpers and pagination", () => {
++  it("encodes ids in paths and passes list filters", async () => {
++    const { client, fake } = setup([json(200, { id: "a/b" }), json(200, { data: [], next_cursor: null })]);
++    await client.getInvoice("a/b");
++    await client.listInvoices({ status: "issued", limit: 50 });
++    expect(fake.calls.map((c) => c.url)).toEqual([
++      "https://api.ledger.test/v1/invoices/a%2Fb",
++      "https://api.ledger.test/v1/invoices?status=issued&limit=50",
++    ]);
++  });
++
++  it("follows cursors and keeps the original query", async () => {
++    const { client, fake } = setup([
++      json(200, { data: [1, 2], next_cursor: "c2" }),
++      json(200, { data: [], next_cursor: "c3" }),
++      json(200, { data: [4], next_cursor: null }),
++    ]);
++    expect(await collect(client.paginate<number>("/invoices", { status: "paid" }))).toEqual([1, 2, 4]);
++    expect(fake.calls.map((c) => c.url)).toEqual([
++      "https://api.ledger.test/v1/invoices?status=paid",
++      "https://api.ledger.test/v1/invoices?status=paid&cursor=c2",
++      "https://api.ledger.test/v1/invoices?status=paid&cursor=c3",
++    ]);
++  });
++
++  it("fetches lazily", async () => {
++    const { client, fake } = setup([json(200, { data: ["a", "b"], next_cursor: "n" })]);
++    for await (const item of client.paginate<string>("/invoices")) {
++      expect(item).toBe("a");
++      break;
++    }
++    expect(fake.calls).toHaveLength(1);
++  });
++
++  it("detects a repeated cursor", async () => {
++    const { client } = setup([
++      json(200, { data: [1], next_cursor: "a" }),
++      json(200, { data: [2], next_cursor: "b" }),
++      json(200, { data: [3], next_cursor: "a" }),
++    ]);
++    const error = await collect(client.paginate("/invoices")).catch((e) => e);
++    expect(error).toBeInstanceOf(ApiError);
++    expect(error.code).toBe("cursor_loop");
++  });
++});

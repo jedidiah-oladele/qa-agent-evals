@@ -1,0 +1,12 @@
+diff --git a/src/currency.ts b/src/currency.ts
+index 6033f5e..0a1a61c 100644
+--- a/src/currency.ts
++++ b/src/currency.ts
+@@ -56,6 +56,6 @@ export class RateTable {
+ 
+   /** True when the rates are older than `maxAgeMs` at time `now`. */
+   isStale(now: Date, maxAgeMs: number): boolean {
+-    return now.getTime() - this.asOf.getTime() > maxAgeMs;
++    return now.getTime() - this.asOf.getTime() >= maxAgeMs;
+   }
+ }

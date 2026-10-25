@@ -1,0 +1,13 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..7a329bc 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -40,7 +40,7 @@ export function parseDate(text: ISODate): DateParts {
+ 
+ export function formatDate({ year, month, day }: DateParts): ISODate {
+   const pad = (n: number, width: number) => String(n).padStart(width, "0");
+-  return `${pad(year, 4)}-${pad(month, 2)}-${pad(day, 2)}`;
++  return `${year}-${pad(month, 2)}-${pad(day, 2)}`;
+ }
+ 
+ /** Days since 1970-01-01. Pure calendar arithmetic, no time zones involved. */

@@ -1,0 +1,16 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..c48f724 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -131,10 +131,7 @@ class Inventory:
+         if reservation.status is ReservationStatus.COMMITTED:
+             raise ReservationError(f"{reservation_id} is already committed")
+         if reservation.status is ReservationStatus.ACTIVE:
+-            if reservation.is_expired(self._clock.now()):
+-                reservation.status = ReservationStatus.EXPIRED
+-            else:
+-                reservation.status = ReservationStatus.RELEASED
++            reservation.status = ReservationStatus.RELEASED
+ 
+     def commit(self, reservation_id: str) -> None:
+         """Ship the reserved units: they leave ``on_hand`` permanently."""

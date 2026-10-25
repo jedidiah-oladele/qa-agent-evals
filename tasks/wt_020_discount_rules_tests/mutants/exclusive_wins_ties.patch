@@ -1,0 +1,12 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..11c9878 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -177,6 +177,6 @@ def apply_discounts(lines: Sequence[LineItem], discounts: Sequence[Discount], *,
+     best = _run(lines, stackable, currency)
+     for discount in exclusive:
+         candidate = _run(lines, [discount], currency)
+-        if candidate.total(currency) > best.total(currency):
++        if candidate.total(currency) >= best.total(currency):
+             best = candidate
+     return best

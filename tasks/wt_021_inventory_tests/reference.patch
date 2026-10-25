@@ -1,0 +1,258 @@
+diff --git a/tests/test_inventory.py b/tests/test_inventory.py
+new file mode 100644
+index 0000000..6b4c383
+--- /dev/null
++++ b/tests/test_inventory.py
+@@ -0,0 +1,252 @@
++from datetime import timedelta
++
++import pytest
++
++from shopcore import InsufficientStockError, Inventory, ReservationError, ReservationStatus, UnknownSkuError
++
++TTL = timedelta(minutes=15)
++
++
++@pytest.fixture
++def inventory(clock):
++    inv = Inventory(clock=clock)
++    inv.set_stock("TEE-001", 10)
++    inv.set_stock("MUG-001", 3)
++    return inv
++
++
++@pytest.fixture
++def timed(clock):
++    inv = Inventory(clock=clock, default_ttl=TTL)
++    inv.set_stock("TEE-001", 5)
++    return inv
++
++
++# -- stock -------------------------------------------------------------------
++
++def test_stock_management(inventory):
++    inventory.add_stock("MUG-001", 2)
++    inventory.add_stock("NEW-1", 1)
++    assert inventory.on_hand("MUG-001") == 5
++    assert inventory.on_hand("NEW-1") == 1
++    inventory.set_stock("MUG-001", 0)
++    assert inventory.available("MUG-001") == 0
++    with pytest.raises(ValueError):
++        inventory.set_stock("MUG-001", -1)
++    with pytest.raises(ValueError):
++        inventory.add_stock("MUG-001", 0)
++
++
++def test_unknown_sku(inventory):
++    for call in (inventory.on_hand, inventory.reserved, inventory.available):
++        with pytest.raises(UnknownSkuError):
++            call("NOPE")
++    with pytest.raises(UnknownSkuError):
++        inventory.reserve("NOPE", 1)
++
++
++# -- reserve -----------------------------------------------------------------
++
++def test_reserve_reduces_availability_not_on_hand(inventory, clock):
++    reservation = inventory.reserve("TEE-001", 4)
++    assert reservation.id == "RSV-000001"
++    assert (reservation.sku, reservation.quantity) == ("TEE-001", 4)
++    assert reservation.status is ReservationStatus.ACTIVE
++    assert reservation.created_at == clock.now()
++    assert inventory.on_hand("TEE-001") == 10
++    assert inventory.reserved("TEE-001") == 4
++    assert inventory.available("TEE-001") == 6
++
++
++def test_reservation_ids_are_sequential_across_skus(inventory):
++    ids = [inventory.reserve(sku, 1).id for sku in ("TEE-001", "MUG-001", "TEE-001")]
++    assert ids == ["RSV-000001", "RSV-000002", "RSV-000003"]
++
++
++def test_can_reserve_exactly_what_is_available(inventory):
++    inventory.reserve("MUG-001", 3)
++    assert inventory.available("MUG-001") == 0
++
++
++def test_cannot_oversell(inventory):
++    inventory.reserve("MUG-001", 2)
++    with pytest.raises(InsufficientStockError) as info:
++        inventory.reserve("MUG-001", 2)
++    assert (info.value.sku, info.value.requested, info.value.available) == ("MUG-001", 2, 1)
++    assert inventory.reserved("MUG-001") == 2
++
++
++@pytest.mark.parametrize("qty", [0, -2])
++def test_reserve_needs_positive_quantity(inventory, qty):
++    with pytest.raises(ValueError):
++        inventory.reserve("TEE-001", qty)
++
++
++# -- reserve_many ------------------------------------------------------------
++
++def test_reserve_many_reserves_every_sku_in_order(inventory):
++    reservations = inventory.reserve_many({"TEE-001": 2, "MUG-001": 3})
++    assert [(r.sku, r.quantity) for r in reservations] == [("TEE-001", 2), ("MUG-001", 3)]
++    assert inventory.available("TEE-001") == 8
++    assert inventory.available("MUG-001") == 0
++
++
++def test_reserve_many_is_all_or_nothing_on_shortage(inventory):
++    with pytest.raises(InsufficientStockError) as info:
++        inventory.reserve_many({"TEE-001": 2, "MUG-001": 4})
++    assert info.value.sku == "MUG-001"
++    assert inventory.available("TEE-001") == 10
++    assert inventory.active_reservations() == []
++
++
++def test_reserve_many_is_all_or_nothing_on_bad_quantity(inventory):
++    with pytest.raises(ValueError):
++        inventory.reserve_many({"TEE-001": 2, "MUG-001": 0})
++    assert inventory.available("TEE-001") == 10
++
++
++def test_reserve_many_is_all_or_nothing_on_unknown_sku(inventory):
++    with pytest.raises(UnknownSkuError):
++        inventory.reserve_many({"TEE-001": 1, "NOPE": 1})
++    assert inventory.reserved("TEE-001") == 0
++
++
++def test_reserve_many_applies_ttl(timed, clock):
++    [reservation] = timed.reserve_many({"TEE-001": 1}, ttl=timedelta(minutes=2))
++    assert reservation.expires_at == clock.now() + timedelta(minutes=2)
++
++
++# -- release / commit --------------------------------------------------------
++
++def test_release_returns_units_and_is_idempotent(inventory):
++    reservation = inventory.reserve("MUG-001", 3)
++    inventory.release(reservation.id)
++    inventory.release(reservation.id)
++    assert reservation.status is ReservationStatus.RELEASED
++    assert inventory.available("MUG-001") == 3
++
++
++def test_commit_removes_units_from_on_hand(inventory):
++    reservation = inventory.reserve("TEE-001", 4)
++    inventory.commit(reservation.id)
++    assert reservation.status is ReservationStatus.COMMITTED
++    assert inventory.on_hand("TEE-001") == 6
++    assert inventory.reserved("TEE-001") == 0
++    assert inventory.available("TEE-001") == 6
++
++
++def test_committed_reservation_cannot_be_committed_or_released(inventory):
++    reservation = inventory.reserve("TEE-001", 1)
++    inventory.commit(reservation.id)
++    with pytest.raises(ReservationError):
++        inventory.commit(reservation.id)
++    with pytest.raises(ReservationError):
++        inventory.release(reservation.id)
++    assert reservation.status is ReservationStatus.COMMITTED
++    assert inventory.on_hand("TEE-001") == 9
++
++
++def test_released_reservation_cannot_be_committed(inventory):
++    reservation = inventory.reserve("TEE-001", 1)
++    inventory.release(reservation.id)
++    with pytest.raises(ReservationError):
++        inventory.commit(reservation.id)
++    assert inventory.on_hand("TEE-001") == 10
++
++
++def test_unknown_reservation(inventory):
++    with pytest.raises(ReservationError):
++        inventory.get("RSV-999999")
++    with pytest.raises(ReservationError):
++        inventory.release("RSV-999999")
++
++
++def test_active_reservations_filter(inventory):
++    a = inventory.reserve("TEE-001", 1)
++    inventory.reserve("MUG-001", 1)
++    inventory.release(a.id)
++    assert [r.sku for r in inventory.active_reservations()] == ["MUG-001"]
++    assert inventory.active_reservations("TEE-001") == []
++
++
++# -- expiry ------------------------------------------------------------------
++
++def test_default_ttl_and_explicit_override(timed, clock):
++    default = timed.reserve("TEE-001", 1)
++    explicit = timed.reserve("TEE-001", 1, ttl=timedelta(minutes=2))
++    assert default.expires_at == clock.now() + TTL
++    assert explicit.expires_at == clock.now() + timedelta(minutes=2)
++
++
++def test_no_ttl_means_no_expiry(inventory, clock):
++    reservation = inventory.reserve("MUG-001", 3)
++    clock.advance(timedelta(days=30))
++    assert reservation.expires_at is None
++    assert inventory.available("MUG-001") == 0
++    inventory.commit(reservation.id)
++    assert inventory.on_hand("MUG-001") == 0
++
++
++def test_reservation_stops_counting_exactly_at_expiry(timed, clock):
++    reservation = timed.reserve("TEE-001", 4)
++    clock.advance(TTL - timedelta(seconds=1))
++    assert timed.available("TEE-001") == 1
++    assert timed.active_reservations() == [reservation]
++    clock.advance(timedelta(seconds=1))
++    assert reservation.is_expired(clock.now())
++    assert timed.available("TEE-001") == 5
++    assert timed.active_reservations() == []
++
++
++def test_reserve_reclaims_expired_stock_and_marks_it_expired(timed, clock):
++    first = timed.reserve("TEE-001", 5)
++    clock.advance(timedelta(minutes=16))
++    second = timed.reserve("TEE-001", 5)
++    assert first.status is ReservationStatus.EXPIRED
++    assert second.status is ReservationStatus.ACTIVE
++
++
++def test_commit_at_expiry_fails_and_marks_expired(timed, clock):
++    reservation = timed.reserve("TEE-001", 2)
++    clock.advance(TTL)
++    with pytest.raises(ReservationError, match="expired"):
++        timed.commit(reservation.id)
++    assert reservation.status is ReservationStatus.EXPIRED
++    assert timed.on_hand("TEE-001") == 5
++
++
++def test_commit_just_before_expiry_succeeds(timed, clock):
++    reservation = timed.reserve("TEE-001", 2)
++    clock.advance(TTL - timedelta(microseconds=1))
++    timed.commit(reservation.id)
++    assert timed.on_hand("TEE-001") == 3
++
++
++def test_release_after_expiry_keeps_expired_status(timed, clock):
++    reservation = timed.reserve("TEE-001", 2)
++    clock.advance(timedelta(hours=1))
++    timed.release(reservation.id)
++    assert reservation.status is ReservationStatus.EXPIRED
++    assert timed.available("TEE-001") == 5
++
++
++def test_expire_stale_returns_newly_expired_only(timed, clock):
++    a = timed.reserve("TEE-001", 1, ttl=timedelta(minutes=1))
++    b = timed.reserve("TEE-001", 1, ttl=timedelta(minutes=10))
++    clock.advance(timedelta(minutes=5))
++    assert [r.id for r in timed.expire_stale()] == [a.id]
++    assert timed.expire_stale() == []
++    assert b.status is ReservationStatus.ACTIVE
++    clock.advance(timedelta(minutes=5))
++    assert [r.id for r in timed.expire_stale()] == [b.id]
++
++
++@pytest.mark.parametrize("ttl", [timedelta(0), timedelta(seconds=-1)])
++def test_ttl_must_be_positive(timed, ttl):
++    with pytest.raises(ValueError):
++        timed.reserve("TEE-001", 1, ttl=ttl)
++
++
++def test_default_ttl_must_be_positive(clock):
++    with pytest.raises(ValueError):
++        Inventory(clock=clock, default_ttl=timedelta(0))

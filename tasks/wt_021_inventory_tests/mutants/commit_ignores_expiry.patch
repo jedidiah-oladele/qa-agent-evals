@@ -1,0 +1,14 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..b02dc78 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -141,9 +141,6 @@ class Inventory:
+         reservation = self.get(reservation_id)
+         if reservation.status is not ReservationStatus.ACTIVE:
+             raise ReservationError(f"{reservation_id} is {reservation.status}, not active")
+-        if reservation.is_expired(self._clock.now()):
+-            reservation.status = ReservationStatus.EXPIRED
+-            raise ReservationError(f"{reservation_id} expired at {reservation.expires_at.isoformat()}")
+         self._on_hand[reservation.sku] -= reservation.quantity
+         reservation.status = ReservationStatus.COMMITTED
+ 

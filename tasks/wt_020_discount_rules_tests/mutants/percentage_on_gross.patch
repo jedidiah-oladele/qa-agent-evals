@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..0f64404 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -72,7 +72,7 @@ class PercentageDiscount(Discount):
+             if gross < self.min_subtotal:
+                 return [Money.zero(currency) for _ in lines]
+         eligible = [self.category is None or line.product.category == self.category for line in lines]
+-        base = sum_money([r for r, ok in zip(remaining, eligible) if ok], currency)
++        base = sum_money([line.gross for line, ok in zip(lines, eligible) if ok], currency)
+         discount = (base * self.percent * Decimal("0.01")).quantize()
+         if self.max_discount is not None:
+             discount = discount.min(self.max_discount)

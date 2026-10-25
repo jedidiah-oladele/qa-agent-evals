@@ -1,0 +1,13 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..5552d41 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -21,7 +21,7 @@ export function daysInMonth(year: number, month: number): number {
+     throw new ValidationError(`month out of range: ${month}`);
+   }
+   if (month === 2) return isLeapYear(year) ? 29 : 28;
+-  return [4, 6, 9, 11].includes(month) ? 30 : 31;
++  return [4, 6, 9].includes(month) ? 30 : 31;
+ }
+ 
+ export function parseDate(text: ISODate): DateParts {

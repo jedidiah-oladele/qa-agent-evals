@@ -1,0 +1,13 @@
+diff --git a/src/currency.ts b/src/currency.ts
+index 6033f5e..17d62fd 100644
+--- a/src/currency.ts
++++ b/src/currency.ts
+@@ -42,7 +42,7 @@ export class RateTable {
+   /** Units of `to` per one unit of `from`. */
+   rate(from: string, to: string): number {
+     if (from === to) return 1;
+-    return this.quote(to) / this.quote(from);
++    return this.quote(from) / this.quote(to);
+   }
+ 
+   /** Convert `amount` into `to`, rounding once at the end. */

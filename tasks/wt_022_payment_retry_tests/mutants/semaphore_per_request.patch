@@ -1,0 +1,16 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..4473688 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -122,10 +122,9 @@ class PaymentClient:
+         """
+         if concurrency < 1:
+             raise ValueError("concurrency must be at least 1")
+-        semaphore = asyncio.Semaphore(concurrency)
+ 
+         async def one(request: ChargeRequest) -> ChargeResult | PaymentError:
+-            async with semaphore:
++            async with asyncio.Semaphore(concurrency):
+                 try:
+                     return await self.charge(request.amount, request.token, idempotency_key=request.idempotency_key)
+                 except PaymentError as exc:

@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..714895a 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -45,8 +45,6 @@ def round_half_up(value: Decimal, currency: str) -> Decimal:
+ def _to_decimal(value: Decimal | int | str) -> Decimal:
+     if isinstance(value, Decimal):
+         return value
+-    if isinstance(value, bool):
+-        raise TypeError("bool is not a valid money amount")
+     if isinstance(value, (int, str)):
+         return Decimal(value)
+     raise TypeError(f"unsupported amount type: {type(value).__name__} (floats are not accepted)")

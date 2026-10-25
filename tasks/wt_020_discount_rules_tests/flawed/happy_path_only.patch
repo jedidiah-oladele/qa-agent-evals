@@ -1,0 +1,62 @@
+diff --git a/tests/test_discounts.py b/tests/test_discounts.py
+new file mode 100644
+index 0000000..c200683
+--- /dev/null
++++ b/tests/test_discounts.py
+@@ -0,0 +1,56 @@
++from datetime import UTC, datetime
++from decimal import Decimal
++
++import pytest
++
++from shopcore import (
++    BuyXGetYDiscount,
++    DiscountError,
++    FixedAmountDiscount,
++    LineItem,
++    Money,
++    PercentageDiscount,
++    apply_discounts,
++)
++
++NOW = datetime(2026, 3, 14, 12, 0, tzinfo=UTC)
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++@pytest.fixture
++def lines(catalog):
++    return [LineItem(catalog.get("TEE-001"), 2), LineItem(catalog.get("MUG-001"), 1)]
++
++
++def test_percentage_discount(lines):
++    result = apply_discounts(lines, [PercentageDiscount(code="TEN", percent=Decimal(10))], now=NOW)
++    assert result.total("USD") == usd("5.25")
++
++
++def test_fixed_discount(lines):
++    result = apply_discounts(lines, [FixedAmountDiscount(code="FIVE", amount=usd("5"))], now=NOW)
++    assert result.total("USD") == usd("5.00")
++
++
++def test_buy_two_get_one(catalog):
++    lines = [LineItem(catalog.get("MUG-001"), 3)]
++    result = apply_discounts(lines, [BuyXGetYDiscount(code="M", sku="MUG-001", buy=2, get=1)], now=NOW)
++    assert result.total("USD") == usd("12.50")
++
++
++def test_two_discounts(lines):
++    discounts = [
++        FixedAmountDiscount(code="FIVE", amount=usd("5"), priority=1),
++        PercentageDiscount(code="TEN", percent=Decimal(10), priority=2),
++    ]
++    result = apply_discounts(lines, discounts, now=NOW)
++    assert len(result.applied) == 2
++    assert result.total("USD") == usd("9.75")
++
++
++def test_invalid_percent():
++    with pytest.raises(DiscountError):
++        PercentageDiscount(code="X", percent=Decimal(0))

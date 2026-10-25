@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..c11fbeb 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -152,7 +152,7 @@ class Inventory:
+         now = self._clock.now()
+         expired = []
+         for reservation in self._reservations.values():
+-            if reservation.status is ReservationStatus.ACTIVE and reservation.is_expired(now):
++            if reservation.is_expired(now):
+                 reservation.status = ReservationStatus.EXPIRED
+                 expired.append(reservation)
+         return expired

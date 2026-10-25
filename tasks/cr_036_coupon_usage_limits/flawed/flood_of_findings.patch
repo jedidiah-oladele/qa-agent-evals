@@ -1,0 +1,15 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..7e95547
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,9 @@
++# Review
++
++- `src/shopcore/coupons.py:52` - Off-by-one: `>` lets `max_redemptions + 1` uses through; should be `>=`.
++- `src/shopcore/pricing.py:86` - Records every entered code, not the discounts applied in the quote, so unapplied codes are consumed.
++- `src/shopcore/coupons.py:25-27` - Guests are blocked from once-per-customer codes; they should be allowed to use them once.
++- `src/shopcore/coupons.py:35-36` - `max_redemptions=0` should be allowed so marketing can switch a coupon off; raising here is a regression.
++- `src/shopcore/coupons.py:43-45` - The counters are plain dicts and not thread-safe; concurrent checkouts can lose updates.
++- `src/shopcore/order.py:45` - `customer_id` should be required on every order, otherwise limits can be bypassed.
++- `src/shopcore/pricing.py:62-67` - The engine stores `redemptions` without checking that every limited code has a matching discount.

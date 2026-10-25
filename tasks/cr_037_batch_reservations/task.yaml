@@ -1,0 +1,83 @@
+id: cr_037_batch_reservations
+title: Review a PR adding batch and partial inventory reservations
+language: python
+category: code_review
+difficulty: hard
+prompt: |
+  Please review the pull request described in `PR.md`. Its full diff is in
+  `pr.diff` and is already applied to the working tree, so you can read and
+  run the code (`pytest -q`). The inventory is used by checkout; reserved
+  units that are never released, or released at the wrong time, mean either
+  overselling or stock that cannot be sold.
+
+  Write your review to `REVIEW.md` at the repository root. List each problem
+  you find as its own bullet, in this form:
+
+      - `path/to/file.py:LINE` - what is wrong and what it causes
+
+  where LINE (or START-END) refers to the line numbers in the current files.
+  Report real defects (wrong behaviour, data or stock errors), not style
+  preferences, and do not pad the list: findings that are not real problems
+  count against the review. Do not modify any source or test files.
+setup:
+  apply_patch: bug.patch
+  remove_paths: []
+test_cmd: pytest -q
+primary:
+  type: review_findings
+  defects:
+    - id: no_rollback_on_shortage
+      file: src/shopcore/inventory.py
+      lines: [159, 161]
+      summary: >-
+        In all-or-nothing mode each SKU is reserved in turn with reserve(); when a later SKU
+        raises InsufficientStockError, the reservations already made for earlier SKUs stay
+        active (no pre-check and no rollback), contradicting the reserve_many contract.
+    - id: mutates_caller_items
+      file: src/shopcore/inventory.py
+      lines: [166, 174]
+      summary: >-
+        `remaining = items` aliases the caller's dict, so `remaining[sku] -= granted`
+        decrements the caller's cart in place (it ends up holding the shortfall instead of
+        the requested quantities).
+    - id: wall_clock_in_hold
+      file: src/shopcore/inventory.py
+      lines: [185, 186]
+      summary: >-
+        _hold uses datetime.now(UTC) instead of the injected clock, so partial-mode
+        reservations get created_at/expires_at from wall-clock time and expire on a
+        different timeline from everything else (never, or immediately, under a test or
+        replay clock).
+  max_false_positives: 2
+  line_tolerance: 3
+rubric:
+  - id: explains_rollback
+    criterion: >-
+      REVIEW.md explains that an all-or-nothing batch that fails on a later SKU leaves the
+      earlier SKUs' reservations held (no up-front check or rollback).
+    weight: 1.0
+    grader: judge
+  - id: explains_mutation
+    criterion: >-
+      REVIEW.md explains that partial mode modifies the caller's `items` dict in place
+      because `remaining` is an alias, not a copy.
+    weight: 1.0
+    grader: judge
+  - id: explains_clock
+    criterion: >-
+      REVIEW.md explains that `_hold` uses the wall clock (`datetime.now`) instead of the
+      inventory's injected clock, so partial-mode reservation times and expiry are wrong.
+    weight: 1.0
+    grader: judge
+  - id: few_false_positives
+    criterion: At most 2 findings in REVIEW.md match no seeded defect.
+    weight: 0.5
+    grader: auto
+    check: {name: review_false_positives, params: {max: 2}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 45, timeout_s: 1500}
+reference: reference.patch
+flawed:
+  - flawed/misses_wall_clock.patch
+  - flawed/blames_reserve_many.patch
+  - flawed/flags_unusual_but_correct_code.patch

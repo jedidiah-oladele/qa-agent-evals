@@ -1,0 +1,47 @@
+diff --git a/tests/test_money.py b/tests/test_money.py
+new file mode 100644
+index 0000000..9e2a519
+--- /dev/null
++++ b/tests/test_money.py
+@@ -0,0 +1,41 @@
++from decimal import Decimal
++
++from shopcore import Money, sum_money
++from shopcore.money import minor_unit, round_half_up
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++def test_construction_works():
++    assert isinstance(Money.of(5, "USD"), Money)
++    assert isinstance(Money.zero("JPY"), Money)
++
++
++def test_arithmetic_returns_money():
++    assert isinstance(usd("1.25") + usd("2.50"), Money)
++    assert isinstance(usd("1.25") - usd("2.50"), Money)
++    assert isinstance(usd("2.50") * 3, Money)
++    assert isinstance(-usd("1"), Money)
++
++
++def test_quantize_runs():
++    for amount in ["2.345", "-2.345", "0.005", "1.2345"]:
++        result = usd(amount).quantize()
++        assert result.currency == "USD"
++
++
++def test_rounding_helpers_run():
++    assert minor_unit("USD") > 0
++    assert isinstance(round_half_up(Decimal("0.125"), "USD"), Decimal)
++
++
++def test_allocate_returns_one_part_per_weight():
++    assert len(usd("10").allocate([1, 1, 1])) == 3
++    assert len(usd("100").allocate([Decimal("19.99"), Decimal("12.50")])) == 2
++
++
++def test_str_and_sum():
++    assert str(usd("3.456")).startswith("USD")
++    assert sum_money([], "USD").is_zero()

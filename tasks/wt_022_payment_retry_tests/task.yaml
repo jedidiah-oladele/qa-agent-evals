@@ -1,0 +1,77 @@
+id: wt_022_payment_retry_tests
+title: Write tests for payment retries, backoff and batch charging
+language: python
+category: write_tests
+difficulty: hard
+prompt: |
+  `shopcore.payments` captures card payments through a gateway: transient
+  failures are retried with capped exponential backoff and jitter, permanent
+  failures are raised immediately, every attempt of one logical charge reuses
+  one idempotency key, and `PaymentClient.charge_many` charges a batch
+  concurrently. A double charge or a lost decline here costs real money, and
+  the module's tests were removed when the payments code moved repos.
+
+  Please write `tests/test_payments.py` with tests that would catch
+  regressions in the documented behaviour of `RetryPolicy` and
+  `PaymentClient`, including the exact delay schedule and how the cap and
+  jitter interact, which errors are retried and for how long, idempotency
+  keys, and `charge_many` (result order, errors returned in place, the
+  concurrency limit, per-request keys). `shopcore.testing` ships test doubles
+  (`ScriptedGateway`, `RecordingSleep`) you can use; `PaymentClient` accepts an
+  injectable `sleep`, `rng` and `key_factory`. Tests must not really sleep.
+
+  The tests must pass against the current code. Only add tests; do not change
+  anything under `src/`.
+setup:
+  apply_patch: null
+  remove_paths: [tests/test_payments.py, tests/test_payments_idempotency.py]
+test_cmd: pytest -q
+primary:
+  type: mutation
+  test_files: [tests/test_payments.py]
+  min_mutant_kill_rate: 0.8
+rubric:
+  - id: tests_only
+    criterion: The diff changes test files only; library source is untouched.
+    weight: 0.5
+    grader: auto
+    check: {name: tests_only}
+  - id: jitter_and_cap
+    criterion: >-
+      A test shows that the cap is applied before jitter, i.e. with jitter enabled a
+      capped delay can land above `max_delay` (within the jitter band), and that jitter
+      can move a delay below as well as above the un-jittered value.
+    weight: 1.0
+    grader: judge
+  - id: batch_order_and_concurrency
+    criterion: >-
+      Tests for `charge_many` use a gateway whose calls finish out of order and assert the
+      results still follow input order, and measure the peak number of in-flight gateway
+      calls against the `concurrency` limit.
+    weight: 1.0
+    grader: judge
+  - id: no_real_sleeps
+    criterion: >-
+      The tests never wait on real time: retries use an injected recording sleep, and any
+      awaits inside fake gateways are zero-length yields (e.g. `asyncio.sleep(0)`).
+    weight: 0.5
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 50, timeout_s: 1800}
+reference: reference.patch
+flawed:
+  - flawed/happy_path_only.patch
+  - flawed/cap_bounds_jitter.patch
+  - flawed/no_jitter_or_ordering_tests.patch
+  - flawed/assertion_light.patch
+mutants:
+  - mutants/cap_applied_after_jitter.patch
+  - mutants/backoff_exponent_off_by_one.patch
+  - mutants/jitter_only_upwards.patch
+  - mutants/sleeps_after_last_attempt.patch
+  - mutants/permanent_errors_retried.patch
+  - mutants/new_key_per_attempt.patch
+  - mutants/charge_many_completion_order.patch
+  - mutants/charge_many_raises_permanent_errors.patch
+  - mutants/semaphore_per_request.patch
+  - mutants/charge_many_drops_request_keys.patch

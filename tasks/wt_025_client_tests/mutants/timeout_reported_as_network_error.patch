@@ -1,0 +1,15 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..81f8c93 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -127,9 +127,7 @@ export class LedgerClient {
+       try {
+         response = await this.fetchImpl(url, { method, headers, body, signal: controller.signal });
+       } catch (error) {
+-        const failure = controller.signal.aborted
+-          ? new TimeoutError(`${method} ${path} timed out after ${this.timeoutMs}ms`)
+-          : new NetworkError(`${method} ${path} failed: ${(error as Error).message}`);
++        const failure = new NetworkError(`${method} ${path} failed: ${(error as Error).message}`);
+         if (!canRetry) throw failure;
+         await this.sleep(this.backoff(attempt));
+         continue;

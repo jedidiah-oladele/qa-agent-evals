@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..77630c8
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review: coupon usage limits
++
++- `src/shopcore/coupons.py:52` - Off-by-one in the total cap: `self._counts[key] > limit.max_redemptions` only blocks once the count already exceeds the limit, so a code with `max_redemptions=500` can be redeemed 501 times (and `max_redemptions=1` twice). The check must be `>=`. The PR's tests never exercise `max_redemptions`, which is why this passes.
++- `src/shopcore/pricing.py:86-87` - `record_redemptions` ignores the `quote` it is given and records every code in `order.coupon_codes`. Codes that were entered but not applied still burn a redemption and the customer's single use: a code that lost to a better exclusive discount, missed its `min_subtotal`, expired, or was skipped by `eligible_discounts` because it was already used up (so a refused retry keeps incrementing the global count). It should count only the codes in `quote.applied_discounts` (that are entered coupons).

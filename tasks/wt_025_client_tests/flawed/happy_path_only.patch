@@ -1,0 +1,39 @@
+diff --git a/tests/client.test.ts b/tests/client.test.ts
+new file mode 100644
+index 0000000..98b2241
+--- /dev/null
++++ b/tests/client.test.ts
+@@ -0,0 +1,33 @@
++import { describe, expect, it } from "vitest";
++import { LedgerClient } from "../src/client";
++import { ApiError } from "../src/errors";
++import { fakeFetch, json, recordingSleep } from "./helpers/fake-fetch";
++
++function setup(...responders: Parameters<typeof fakeFetch>) {
++  const fake = fakeFetch(...responders);
++  const client = new LedgerClient({ baseUrl: "https://api.ledger.test", apiKey: "k", fetch: fake.fetch, sleep: recordingSleep().sleep });
++  return { client, fake };
++}
++
++describe("LedgerClient", () => {
++  it("gets an invoice", async () => {
++    const { client } = setup(json(200, { id: "inv_1" }));
++    await expect(client.getInvoice("inv_1")).resolves.toEqual({ id: "inv_1" });
++  });
++
++  it("creates an invoice", async () => {
++    const { client, fake } = setup(json(201, { id: "inv_2" }));
++    await client.createInvoice({ number: "A-1", currency: "USD", total_minor: 100 });
++    expect(fake.calls[0]!.init.method).toBe("POST");
++  });
++
++  it("throws ApiError on 404", async () => {
++    const { client } = setup(json(404, {}));
++    await expect(client.getInvoice("nope")).rejects.toBeInstanceOf(ApiError);
++  });
++
++  it("retries a 503", async () => {
++    const { client } = setup(json(503, {}), json(200, { ok: true }));
++    await expect(client.request("GET", "/x")).resolves.toEqual({ ok: true });
++  });
++});

@@ -1,0 +1,31 @@
+diff --git a/tests/currency.test.ts b/tests/currency.test.ts
+new file mode 100644
+index 0000000..f545bef
+--- /dev/null
++++ b/tests/currency.test.ts
+@@ -0,0 +1,25 @@
++import { describe, expect, it } from "vitest";
++import { RateTable } from "../src/currency";
++import { money } from "../src/money";
++
++const table = new RateTable("USD", { EUR: 0.92, GBP: 0.79, JPY: 151.4, KWD: 0.307 }, new Date("2026-10-01T00:00:00Z"));
++
++describe("RateTable smoke", () => {
++  it("rates are positive numbers", () => {
++    for (const [from, to] of [["USD", "EUR"], ["EUR", "USD"], ["EUR", "GBP"]] as const) {
++      expect(table.rate(from, to)).toBeGreaterThan(0);
++    }
++  });
++
++  it("convert returns money in the target currency", () => {
++    for (const to of ["EUR", "GBP", "JPY", "KWD"]) {
++      const result = table.convert(money(1_000, "USD"), to);
++      expect(result.currency).toBe(to);
++      expect(Number.isInteger(result.minor)).toBe(true);
++    }
++  });
++
++  it("isStale returns a boolean", () => {
++    expect(typeof table.isStale(new Date(), 1000)).toBe("boolean");
++  });
++});

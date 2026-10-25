@@ -1,0 +1,268 @@
+diff --git a/tests/test_discounts.py b/tests/test_discounts.py
+new file mode 100644
+index 0000000..4cd1507
+--- /dev/null
++++ b/tests/test_discounts.py
+@@ -0,0 +1,262 @@
++from datetime import UTC, datetime, timedelta
++from decimal import Decimal
++
++import pytest
++
++from shopcore import (
++    BuyXGetYDiscount,
++    DiscountError,
++    FixedAmountDiscount,
++    LineItem,
++    Money,
++    PercentageDiscount,
++    apply_discounts,
++)
++
++NOW = datetime(2026, 3, 14, 12, 0, tzinfo=UTC)
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++@pytest.fixture
++def lines(catalog):
++    # 2 x 19.99 (apparel) + 1 x 12.50 (kitchen) = 52.48
++    return [LineItem(catalog.get("TEE-001"), 2), LineItem(catalog.get("MUG-001"), 1)]
++
++
++def amounts(result):
++    return [m.amount for m in result.per_line]
++
++
++def codes(result):
++    return [a.code for a in result.applied]
++
++
++# -- individual rules ------------------------------------------------------
++
++def test_percentage_discount_is_rounded_then_spread_by_line_value(lines):
++    result = apply_discounts(lines, [PercentageDiscount(code="TEN", percent=Decimal(10))], now=NOW)
++    # 10% of 52.48 = 5.248 -> 5.25, split 39.98 : 12.50
++    assert amounts(result) == [Decimal("4.00"), Decimal("1.25")]
++    assert result.total("USD") == usd("5.25")
++    assert [(a.code, a.amount) for a in result.applied] == [("TEN", usd("5.25"))]
++
++
++def test_category_discount_only_touches_matching_lines(lines):
++    result = apply_discounts(
++        lines, [PercentageDiscount(code="KITCHEN20", percent=Decimal(20), category="kitchen")], now=NOW
++    )
++    assert amounts(result) == [Decimal("0"), Decimal("2.50")]
++
++
++def test_category_discount_with_no_matching_line_is_not_applied(lines):
++    result = apply_discounts(
++        lines, [PercentageDiscount(code="BOOKS", percent=Decimal(20), category="books")], now=NOW
++    )
++    assert result.total("USD").is_zero()
++    assert result.applied == []
++
++
++def test_percentage_cap(lines):
++    discount = PercentageDiscount(code="HALF", percent=Decimal(50), max_discount=usd("10"))
++    result = apply_discounts(lines, [discount], now=NOW)
++    assert result.total("USD") == usd("10.00")
++
++
++def test_percentage_below_cap_is_not_raised_to_cap(lines):
++    discount = PercentageDiscount(code="TEN", percent=Decimal(10), max_discount=usd("10"))
++    assert apply_discounts(lines, [discount], now=NOW).total("USD") == usd("5.25")
++
++
++def test_full_percentage_is_allowed(lines):
++    result = apply_discounts(lines, [PercentageDiscount(code="FREE", percent=Decimal(100))], now=NOW)
++    assert amounts(result) == [Decimal("39.98"), Decimal("12.50")]
++
++
++@pytest.mark.parametrize("percent", ["0", "-5", "100.01"])
++def test_percent_out_of_range(percent):
++    with pytest.raises(DiscountError):
++        PercentageDiscount(code="X", percent=Decimal(percent))
++
++
++def test_min_subtotal_blocks_small_orders(lines):
++    discount = PercentageDiscount(code="BIG", percent=Decimal(10), min_subtotal=usd("60"))
++    result = apply_discounts(lines, [discount], now=NOW)
++    assert result.total("USD").is_zero()
++    assert result.applied == []
++
++
++def test_min_subtotal_is_inclusive(lines):
++    exact = FixedAmountDiscount(code="EXACT", amount=usd("5"), min_subtotal=usd("52.48"))
++    assert apply_discounts(lines, [exact], now=NOW).total("USD") == usd("5.00")
++    above = FixedAmountDiscount(code="ABOVE", amount=usd("5"), min_subtotal=usd("52.49"))
++    assert apply_discounts(lines, [above], now=NOW).total("USD").is_zero()
++    pct_exact = PercentageDiscount(code="PCT", percent=Decimal(10), min_subtotal=usd("52.48"))
++    assert apply_discounts(lines, [pct_exact], now=NOW).total("USD") == usd("5.25")
++
++
++def test_min_subtotal_uses_gross_not_amount_left_after_earlier_discounts(lines):
++    # FIVE leaves 47.48, but the order's gross is still 52.48 >= 50.
++    discounts = [
++        FixedAmountDiscount(code="FIVE", amount=usd("5"), priority=1),
++        PercentageDiscount(code="TEN-OVER-50", percent=Decimal(10), min_subtotal=usd("50"), priority=2),
++    ]
++    result = apply_discounts(lines, discounts, now=NOW)
++    assert codes(result) == ["FIVE", "TEN-OVER-50"]
++    assert result.total("USD") == usd("9.75")
++
++
++def test_fixed_amount_spread_by_value(lines):
++    result = apply_discounts(lines, [FixedAmountDiscount(code="TEN", amount=usd("10"))], now=NOW)
++    assert sum(amounts(result)) == Decimal("10.00")
++    assert amounts(result) == [Decimal("7.62"), Decimal("2.38")]
++
++
++def test_fixed_amount_capped_at_order_value(catalog):
++    single = [LineItem(catalog.get("MUG-001"), 1)]
++    result = apply_discounts(single, [FixedAmountDiscount(code="OFF20", amount=usd("20"))], now=NOW)
++    assert result.total("USD") == usd("12.50")
++
++
++@pytest.mark.parametrize("amount", ["0", "-1"])
++def test_fixed_amount_rejects_non_positive(amount):
++    with pytest.raises(DiscountError):
++        FixedAmountDiscount(code="X", amount=usd(amount))
++
++
++# -- buy X get Y -----------------------------------------------------------
++
++@pytest.mark.parametrize(("quantity", "free"), [(2, 0), (3, 1), (5, 1), (6, 2), (7, 2)])
++def test_bxgy_counts_complete_groups_only(catalog, quantity, free):
++    lines = [LineItem(catalog.get("MUG-001"), quantity)]
++    result = apply_discounts(lines, [BuyXGetYDiscount(code="MUG3FOR2", sku="MUG-001", buy=2, get=1)], now=NOW)
++    assert result.per_line == [usd("12.50") * free]
++
++
++def test_bxgy_with_larger_get(catalog):
++    lines = [LineItem(catalog.get("BEAN-250"), 9)]
++    result = apply_discounts(lines, [BuyXGetYDiscount(code="B", sku="BEAN-250", buy=1, get=2)], now=NOW)
++    assert result.total("USD") == usd("59.70")  # 3 groups of 3, 2 free each
++
++
++def test_bxgy_ignores_other_skus(catalog):
++    lines = [LineItem(catalog.get("TEE-001"), 3), LineItem(catalog.get("MUG-001"), 3)]
++    result = apply_discounts(lines, [BuyXGetYDiscount(code="M", sku="MUG-001", buy=2, get=1)], now=NOW)
++    assert amounts(result) == [Decimal("0"), Decimal("12.50")]
++
++
++def test_incomplete_bxgy_group_is_not_reported_as_applied(catalog):
++    lines = [LineItem(catalog.get("MUG-001"), 2)]
++    result = apply_discounts(lines, [BuyXGetYDiscount(code="M", sku="MUG-001", buy=2, get=1)], now=NOW)
++    assert result.total("USD").is_zero()
++    assert result.applied == []
++
++
++@pytest.mark.parametrize(("buy", "get"), [(0, 1), (1, 0)])
++def test_invalid_buy_get(buy, get):
++    with pytest.raises(DiscountError):
++        BuyXGetYDiscount(code="X", sku="A", buy=buy, get=get)
++
++
++# -- stacking and ordering -------------------------------------------------
++
++def test_stackable_discounts_run_in_priority_order_on_what_is_left(lines):
++    first = FixedAmountDiscount(code="FIVE", amount=usd("5"), priority=10)
++    second = PercentageDiscount(code="TEN", percent=Decimal(10), priority=20)
++    result = apply_discounts(lines, [second, first], now=NOW)
++    # 52.48 - 5.00 = 47.48; 10% of that = 4.748 -> 4.75
++    assert codes(result) == ["FIVE", "TEN"]
++    assert [(a.code, a.amount) for a in result.applied] == [("FIVE", usd("5.00")), ("TEN", usd("4.75"))]
++    assert result.total("USD") == usd("9.75")
++
++
++def test_priority_order_changes_the_result(lines):
++    first = PercentageDiscount(code="TEN", percent=Decimal(10), priority=1)
++    second = FixedAmountDiscount(code="FIVE", amount=usd("5"), priority=2)
++    result = apply_discounts(lines, [second, first], now=NOW)
++    assert codes(result) == ["TEN", "FIVE"]
++    assert result.total("USD") == usd("10.25")
++
++
++def test_same_priority_is_ordered_by_code(lines):
++    a = PercentageDiscount(code="B-TEN", percent=Decimal(10))
++    b = FixedAmountDiscount(code="A-FIVE", amount=usd("5"))
++    result = apply_discounts(lines, [a, b], now=NOW)
++    assert codes(result) == ["A-FIVE", "B-TEN"]
++    assert result.total("USD") == usd("9.75")
++
++
++def test_best_exclusive_beats_smaller_stack(lines):
++    stacked = [
++        PercentageDiscount(code="FIVE-PCT", percent=Decimal(5)),
++        FixedAmountDiscount(code="TWO", amount=usd("2")),
++    ]
++    exclusive = PercentageDiscount(code="VIP", percent=Decimal(15), stackable=False)
++    result = apply_discounts(lines, [*stacked, exclusive], now=NOW)
++    assert codes(result) == ["VIP"]
++    assert result.total("USD") == usd("7.87")
++
++
++def test_stack_beats_smaller_exclusive(lines):
++    stacked = [
++        PercentageDiscount(code="TEN", percent=Decimal(10)),
++        FixedAmountDiscount(code="FIVE", amount=usd("5")),
++    ]
++    exclusive = FixedAmountDiscount(code="SOLO", amount=usd("6"), stackable=False)
++    result = apply_discounts(lines, [exclusive, *stacked], now=NOW)
++    assert codes(result) == ["FIVE", "TEN"]
++
++
++def test_exclusives_are_never_combined(lines):
++    a = FixedAmountDiscount(code="X3", amount=usd("3"), stackable=False)
++    b = FixedAmountDiscount(code="X4", amount=usd("4"), stackable=False)
++    result = apply_discounts(lines, [a, b], now=NOW)
++    assert codes(result) == ["X4"]
++    assert result.total("USD") == usd("4.00")
++
++
++def test_stack_wins_a_tie_with_an_exclusive(lines):
++    stacked = FixedAmountDiscount(code="FIVE", amount=usd("5"))
++    exclusive = FixedAmountDiscount(code="ALSO-FIVE", amount=usd("5"), stackable=False)
++    assert codes(apply_discounts(lines, [exclusive, stacked], now=NOW)) == ["FIVE"]
++
++
++def test_discounts_never_exceed_line_value(catalog):
++    lines = [LineItem(catalog.get("MUG-001"), 1)]
++    discounts = [
++        FixedAmountDiscount(code="A", amount=usd("10"), priority=1),
++        FixedAmountDiscount(code="B", amount=usd("10"), priority=2),
++        FixedAmountDiscount(code="C", amount=usd("10"), priority=3),
++    ]
++    result = apply_discounts(lines, discounts, now=NOW)
++    assert result.total("USD") == usd("12.50")
++    assert [(a.code, a.amount) for a in result.applied] == [("A", usd("10.00")), ("B", usd("2.50"))]
++
++
++# -- expiry ------------------------------------------------------------------
++
++def test_expiry_is_exclusive(lines):
++    expired = PercentageDiscount(code="OLD", percent=Decimal(10), expires_at=NOW)
++    live = PercentageDiscount(code="NEW", percent=Decimal(10), expires_at=NOW + timedelta(seconds=1))
++    result = apply_discounts(lines, [expired, live], now=NOW)
++    assert codes(result) == ["NEW"]
++    assert result.total("USD") == usd("5.25")
++
++
++def test_expired_exclusive_cannot_win(lines):
++    vip = PercentageDiscount(code="VIP", percent=Decimal(50), stackable=False, expires_at=NOW)
++    small = FixedAmountDiscount(code="ONE", amount=usd("1"))
++    assert codes(apply_discounts(lines, [vip, small], now=NOW)) == ["ONE"]
++
++
++def test_is_active_boundary():
++    discount = FixedAmountDiscount(code="X", amount=usd("1"), expires_at=NOW)
++    assert discount.is_active(NOW - timedelta(microseconds=1))
++    assert not discount.is_active(NOW)
++    assert FixedAmountDiscount(code="Y", amount=usd("1")).is_active(NOW)
++
++
++def test_no_lines_no_discount():
++    assert apply_discounts([], [PercentageDiscount(code="X", percent=Decimal(5))], now=NOW).per_line == []

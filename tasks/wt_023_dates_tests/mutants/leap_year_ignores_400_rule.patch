@@ -1,0 +1,13 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..a54b04e 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -13,7 +13,7 @@ const MS_PER_DAY = 86_400_000;
+ const ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
+ 
+ export function isLeapYear(year: number): boolean {
+-  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
++  return year % 4 === 0 && year % 100 !== 0;
+ }
+ 
+ export function daysInMonth(year: number, month: number): number {

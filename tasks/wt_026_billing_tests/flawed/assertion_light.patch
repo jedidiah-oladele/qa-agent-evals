@@ -1,0 +1,33 @@
+diff --git a/tests/billing.test.ts b/tests/billing.test.ts
+new file mode 100644
+index 0000000..fd92ba3
+--- /dev/null
++++ b/tests/billing.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from "vitest";
++import { billingPeriods, nthPeriod, periodContaining, planChangeAdjustment, prorate } from "../src/billing";
++import { money } from "../src/money";
++
++describe("billing smoke tests", () => {
++  it("period helpers return periods", () => {
++    expect(nthPeriod("2026-01-31", 3, "monthly")).toHaveProperty("start");
++    expect(Array.isArray(billingPeriods("2026-01-31", "2026-12-31", "monthly"))).toBe(true);
++    expect(periodContaining("2026-01-31", "2026-05-01", "monthly")).toHaveProperty("end");
++  });
++
++  it("prorate returns money in the same currency", () => {
++    const april = { start: "2026-04-01", end: "2026-05-01" };
++    expect(prorate(money(3000, "USD"), april, "2026-04-10", "2026-04-20").currency).toBe("USD");
++  });
++
++  it("plan changes produce an adjustment", () => {
++    const result = planChangeAdjustment({
++      oldPrice: money(3000, "USD"),
++      newPrice: money(6000, "USD"),
++      anchor: "2026-01-01",
++      interval: "monthly",
++      changeOn: "2026-04-21",
++    });
++    expect(result).toHaveProperty("net");
++  });
++});

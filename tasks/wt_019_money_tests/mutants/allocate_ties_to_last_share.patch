@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..c92ad69 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -151,7 +151,7 @@ class Money:
+         raw = [Decimal(units_total) * w / total_weight for w in weights]
+         floors = [int(r.to_integral_value(rounding=ROUND_DOWN)) for r in raw]
+         leftover = units_total - sum(floors)
+-        order = sorted(range(len(weights)), key=lambda i: (-(raw[i] - floors[i]), i))
++        order = sorted(range(len(weights)), key=lambda i: (-(raw[i] - floors[i]), -i))
+         for i in order[:leftover]:
+             floors[i] += 1
+         return [Money(sign * Decimal(units) * unit, self.currency) for units in floors]

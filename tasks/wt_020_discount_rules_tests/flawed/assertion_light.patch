@@ -1,0 +1,63 @@
+diff --git a/tests/test_discounts.py b/tests/test_discounts.py
+new file mode 100644
+index 0000000..7ab77f2
+--- /dev/null
++++ b/tests/test_discounts.py
+@@ -0,0 +1,57 @@
++from datetime import UTC, datetime, timedelta
++from decimal import Decimal
++
++import pytest
++
++from shopcore import (
++    BuyXGetYDiscount,
++    FixedAmountDiscount,
++    LineItem,
++    Money,
++    PercentageDiscount,
++    apply_discounts,
++)
++
++NOW = datetime(2026, 3, 14, 12, 0, tzinfo=UTC)
++
++
++def usd(amount: str) -> Money:
++    return Money.of(amount, "USD")
++
++
++@pytest.fixture
++def lines(catalog):
++    return [LineItem(catalog.get("TEE-001"), 2), LineItem(catalog.get("MUG-001"), 1)]
++
++
++def test_every_rule_produces_one_amount_per_line(lines):
++    rules = [
++        PercentageDiscount(code="TEN", percent=Decimal(10)),
++        PercentageDiscount(code="K", percent=Decimal(20), category="kitchen"),
++        FixedAmountDiscount(code="FIVE", amount=usd("5")),
++        BuyXGetYDiscount(code="M", sku="MUG-001", buy=2, get=1),
++    ]
++    for rule in rules:
++        result = apply_discounts(lines, [rule], now=NOW)
++        assert len(result.per_line) == len(lines)
++
++
++def test_stacking_runs(lines):
++    discounts = [
++        FixedAmountDiscount(code="FIVE", amount=usd("5"), priority=1),
++        PercentageDiscount(code="TEN", percent=Decimal(10), priority=2),
++        PercentageDiscount(code="VIP", percent=Decimal(15), stackable=False),
++    ]
++    result = apply_discounts(lines, discounts, now=NOW)
++    assert result.applied
++    assert not result.total("USD").is_negative()
++
++
++def test_expiry_runs(lines):
++    discount = PercentageDiscount(code="OLD", percent=Decimal(10), expires_at=NOW + timedelta(days=1))
++    assert apply_discounts(lines, [discount], now=NOW) is not None
++
++
++def test_min_subtotal_and_cap_run(lines):
++    discount = PercentageDiscount(code="X", percent=Decimal(50), max_discount=usd("10"), min_subtotal=usd("20"))
++    assert apply_discounts(lines, [discount], now=NOW).total("USD") <= usd("10")

@@ -1,0 +1,10 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..deb1940
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,4 @@
++# Review
++
++- `src/shopcore/coupons.py:52` - Off-by-one: `>` lets `max_redemptions + 1` uses through; should be `>=`.
++- `src/shopcore/coupons.py:61-65` - `record` counts a redemption for whatever code it is given, so codes that were entered but never applied to the order are counted as used.

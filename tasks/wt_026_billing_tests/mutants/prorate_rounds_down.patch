@@ -1,0 +1,13 @@
+diff --git a/src/billing.ts b/src/billing.ts
+index 69e9c16..ed00412 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -63,7 +63,7 @@ export function prorate(price: Money, period: Period, activeFrom: ISODate, activ
+   if (overlap <= 0) return zero(price.currency);
+   const total = periodDays(period);
+   if (overlap >= total) return price;
+-  return multiply(price, overlap / total);
++  return multiply(price, overlap / total, "floor");
+ }
+ 
+ export interface PlanChange {

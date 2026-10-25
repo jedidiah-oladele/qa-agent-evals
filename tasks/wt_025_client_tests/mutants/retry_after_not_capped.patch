@@ -1,0 +1,13 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..66bf9a9 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -144,7 +144,7 @@ export class LedgerClient {
+ 
+       if (RETRYABLE_STATUS.has(response.status) && canRetry) {
+         const requested = parseRetryAfter(response.headers.get("Retry-After"), this.now());
+-        const delay = requested === undefined ? this.backoff(attempt) : Math.min(requested, this.maxRetryDelayMs);
++        const delay = requested === undefined ? this.backoff(attempt) : requested;
+         await this.sleep(delay);
+         continue;
+       }

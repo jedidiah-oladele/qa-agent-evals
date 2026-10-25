@@ -1,0 +1,20 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..7031762 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -98,13 +98,13 @@ class Money:
+         return Money(-self.amount, self.currency)
+ 
+     def __lt__(self, other: Money) -> bool:
+-        return self.amount < self._check(other).amount
++        return self.amount < other.amount
+ 
+     def __le__(self, other: Money) -> bool:
+         return self.amount <= self._check(other).amount
+ 
+     def __gt__(self, other: Money) -> bool:
+-        return self.amount > self._check(other).amount
++        return self.amount > other.amount
+ 
+     def __ge__(self, other: Money) -> bool:
+         return self.amount >= self._check(other).amount

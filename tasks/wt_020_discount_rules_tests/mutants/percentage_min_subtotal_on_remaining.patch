@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..13dc94c 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -68,7 +68,7 @@ class PercentageDiscount(Discount):
+     def compute(self, lines: Sequence[LineItem], remaining: Sequence[Money]) -> list[Money]:
+         currency = remaining[0].currency
+         if self.min_subtotal is not None:
+-            gross = sum_money([line.gross for line in lines], currency)
++            gross = sum_money(list(remaining), currency)
+             if gross < self.min_subtotal:
+                 return [Money.zero(currency) for _ in lines]
+         eligible = [self.category is None or line.product.category == self.category for line in lines]

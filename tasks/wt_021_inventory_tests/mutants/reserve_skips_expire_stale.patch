@@ -1,0 +1,12 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..7026d42 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -99,7 +99,6 @@ class Inventory:
+     def reserve(self, sku: str, quantity: int, *, ttl: timedelta | None = None) -> Reservation:
+         if quantity <= 0:
+             raise ValueError("quantity must be positive")
+-        self.expire_stale()
+         available = self.available(sku)
+         if quantity > available:
+             raise InsufficientStockError(sku, quantity, available)

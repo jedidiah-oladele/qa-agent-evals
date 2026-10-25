@@ -1,0 +1,13 @@
+diff --git a/src/currency.ts b/src/currency.ts
+index 6033f5e..23ab4be 100644
+--- a/src/currency.ts
++++ b/src/currency.ts
+@@ -51,7 +51,7 @@ export class RateTable {
+     const fromExp = currencyInfo(amount.currency).exponent;
+     const toExp = currencyInfo(to).exponent;
+     const value = amount.minor * this.rate(amount.currency, to) * 10 ** (toExp - fromExp);
+-    return money(roundToInteger(value, mode), to);
++    return money(roundToInteger(value), to);
+   }
+ 
+   /** True when the rates are older than `maxAgeMs` at time `now`. */

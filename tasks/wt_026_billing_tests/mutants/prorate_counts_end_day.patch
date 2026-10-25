@@ -1,0 +1,13 @@
+diff --git a/src/billing.ts b/src/billing.ts
+index 69e9c16..4d6eefa 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -59,7 +59,7 @@ export function periodContaining(anchor: ISODate, date: ISODate, interval: Inter
+ export function prorate(price: Money, period: Period, activeFrom: ISODate, activeTo: ISODate): Money {
+   const from = maxDate(period.start, activeFrom);
+   const to = minDate(period.end, activeTo);
+-  const overlap = daysBetween(from, to);
++  const overlap = daysBetween(from, to) + 1;
+   if (overlap <= 0) return zero(price.currency);
+   const total = periodDays(period);
+   if (overlap >= total) return price;

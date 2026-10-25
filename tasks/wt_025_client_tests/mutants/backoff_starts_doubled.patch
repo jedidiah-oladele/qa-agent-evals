@@ -1,0 +1,13 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..1bc984f 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -104,7 +104,7 @@ export class LedgerClient {
+   }
+ 
+   private backoff(retry: number): number {
+-    return Math.min(this.retryBaseMs * 2 ** retry, this.maxRetryDelayMs);
++    return Math.min(this.retryBaseMs * 2 ** (retry + 1), this.maxRetryDelayMs);
+   }
+ 
+   async request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {

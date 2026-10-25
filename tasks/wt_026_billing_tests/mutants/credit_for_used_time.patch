@@ -1,0 +1,13 @@
+diff --git a/src/billing.ts b/src/billing.ts
+index 69e9c16..bbce342 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -96,7 +96,7 @@ export function planChangeAdjustment(change: PlanChange): Adjustment {
+     throw new CurrencyMismatchError(oldPrice.currency, newPrice.currency);
+   }
+   const period = periodContaining(anchor, changeOn, interval);
+-  const credit = prorate(oldPrice, period, changeOn, period.end);
++  const credit = prorate(oldPrice, period, period.start, changeOn);
+   const charge = prorate(newPrice, period, changeOn, period.end);
+   return { period, credit, charge, net: subtract(charge, credit) };
+ }

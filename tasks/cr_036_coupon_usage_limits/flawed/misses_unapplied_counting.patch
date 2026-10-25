@@ -1,0 +1,9 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..54b0d57
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,3 @@
++# Review
++
++- `src/shopcore/coupons.py:52` - The cap check uses `>` so a code with `max_redemptions=N` can be used N+1 times; use `>=`.

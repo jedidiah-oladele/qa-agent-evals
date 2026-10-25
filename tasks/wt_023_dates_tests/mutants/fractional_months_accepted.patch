@@ -1,0 +1,14 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..f9486cc 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -71,9 +71,6 @@ export function addDays(date: ISODate, days: number): ISODate {
+  * 2026-01-31 + 1 month = 2026-02-28; 2024-01-31 + 1 month = 2024-02-29.
+  */
+ export function addMonths(date: ISODate, months: number): ISODate {
+-  if (!Number.isInteger(months)) {
+-    throw new ValidationError(`months must be an integer, got ${months}`);
+-  }
+   const { year, month, day } = parseDate(date);
+   const index = year * 12 + (month - 1) + months;
+   const newYear = Math.floor(index / 12);

@@ -1,0 +1,14 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..f76fa0e 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -105,8 +105,7 @@ class PaymentClient:
+                 raise
+             except TransientPaymentError as exc:
+                 last_error = exc
+-                if attempt < self.policy.max_attempts:
+-                    await self._sleep(self.policy.delay_for(attempt, self._rng))
++                await self._sleep(self.policy.delay_for(attempt, self._rng))
+                 continue
+             return ChargeResult(charge_id, amount, attempt, key)
+         assert last_error is not None

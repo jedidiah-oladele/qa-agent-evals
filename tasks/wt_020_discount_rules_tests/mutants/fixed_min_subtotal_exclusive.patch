@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..bae4fc1 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -94,7 +94,7 @@ class FixedAmountDiscount(Discount):
+         currency = remaining[0].currency
+         if self.min_subtotal is not None:
+             gross = sum_money([line.gross for line in lines], currency)
+-            if gross < self.min_subtotal:
++            if gross <= self.min_subtotal:
+                 return [Money.zero(currency) for _ in lines]
+         available = sum_money(list(remaining), currency)
+         discount = self.amount.min(available)

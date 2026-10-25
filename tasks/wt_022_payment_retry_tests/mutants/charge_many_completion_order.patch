@@ -1,0 +1,11 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..3305795 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -131,4 +131,5 @@ class PaymentClient:
+                 except PaymentError as exc:
+                     return exc
+ 
+-        return list(await asyncio.gather(*(one(r) for r in requests)))
++        tasks = [asyncio.ensure_future(one(r)) for r in requests]
++        return [await done for done in asyncio.as_completed(tasks)]

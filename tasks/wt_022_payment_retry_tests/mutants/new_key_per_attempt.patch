@@ -1,0 +1,16 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..a474c6f 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -96,9 +96,9 @@ class PaymentClient:
+     async def charge(self, amount: Money, token: str, *, idempotency_key: str | None = None) -> ChargeResult:
+         if amount.is_negative() or amount.is_zero():
+             raise ValueError("charge amount must be positive")
+-        key = idempotency_key or self._key_factory()
+-        last_error: TransientPaymentError | None = None
++        last_error: PaymentError | None = None
+         for attempt in range(1, self.policy.max_attempts + 1):
++            key = idempotency_key or self._key_factory()
+             try:
+                 charge_id = await self.gateway.charge(amount, token, key)
+             except PermanentPaymentError:

@@ -1,0 +1,13 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..775fa07 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -83,7 +83,7 @@ export function addMonths(date: ISODate, months: number): ISODate {
+ 
+ /** Whole days from `start` to `end` (negative if `end` is earlier). */
+ export function daysBetween(start: ISODate, end: ISODate): number {
+-  return toEpochDay(end) - toEpochDay(start);
++  return toEpochDay(start) - toEpochDay(end);
+ }
+ 
+ export function compareDates(a: ISODate, b: ISODate): -1 | 0 | 1 {

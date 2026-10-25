@@ -1,0 +1,22 @@
+diff --git a/src/shopcore/money.py b/src/shopcore/money.py
+index adfc72e..e9b9212 100644
+--- a/src/shopcore/money.py
++++ b/src/shopcore/money.py
+@@ -9,7 +9,7 @@ from __future__ import annotations
+ 
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+-from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
++from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Decimal
+ 
+ from .errors import CurrencyMismatchError, UnknownCurrencyError
+ 
+@@ -39,7 +39,7 @@ def minor_unit(currency: str) -> Decimal:
+ 
+ def round_half_up(value: Decimal, currency: str) -> Decimal:
+     """Round ``value`` to the currency's minor unit, halves away from zero."""
+-    return value.quantize(minor_unit(currency), rounding=ROUND_HALF_UP)
++    return value.quantize(minor_unit(currency), rounding=ROUND_HALF_EVEN)
+ 
+ 
+ def _to_decimal(value: Decimal | int | str) -> Decimal:

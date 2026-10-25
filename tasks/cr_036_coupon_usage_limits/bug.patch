@@ -1,0 +1,497 @@
+diff --git a/PR.md b/PR.md
+new file mode 100644
+index 0000000..c7580c0
+--- /dev/null
++++ b/PR.md
+@@ -0,0 +1,37 @@
++# Coupon usage limits (total cap and one use per customer)
++
++Marketing wants to run limited coupons ("first 500 customers", "one per
++customer") without hand-editing the discount list when a promotion runs out.
++
++## Changes
++
++- New `shopcore.coupons` module:
++  - `CouponLimit(code, max_redemptions=None, once_per_customer=False)`.
++    `max_redemptions` is the total number of times a code can be redeemed
++    across all customers.
++  - `CouponRedemptions`: in-memory redemption counts per code and the set of
++    customers who used each code; `can_redeem(code, customer_id)`,
++    `record(code, customer_id)`, `redemptions(code)`.
++- `Order` gains an optional `customer_id`.
++- `PricingEngine` takes an optional `redemptions=` store:
++  - `eligible_discounts` drops entered codes that are no longer redeemable,
++    so a used-up code is quoted as if it had not been entered.
++  - New `record_redemptions(order, quote)`: checkout calls it once payment
++    has succeeded, with the quote that was paid, to count the redemption.
++    Quoting alone never consumes a code.
++
++## Notes
++
++- Codes are matched case-insensitively and trimmed, like coupon entry.
++- Guest orders (no `customer_id`) cannot use `once_per_customer` codes:
++  there is no way to tell two guests apart. This is intentional (agreed with
++  marketing).
++- Limits only apply to coupon codes customers enter; auto-applied
++  promotions are not coupons and are unaffected.
++- Persistence is out of scope; the store is in memory for now and will be
++  backed by the orders database in a follow-up.
++
++## Tests
++
++`tests/test_coupon_limits.py`: unlimited codes, once-per-customer, guests,
++quoting does not consume a code, config validation.
+diff --git a/pr.diff b/pr.diff
+new file mode 100644
+index 0000000..c6d868b
+--- /dev/null
++++ b/pr.diff
+@@ -0,0 +1,224 @@
++diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
++index ed4eb1b..5cf4a20 100644
++--- a/src/shopcore/__init__.py
+++++ b/src/shopcore/__init__.py
++@@ -2,6 +2,7 @@
++ 
++ from .catalog import Catalog, Product
++ from .clock import Clock, FixedClock, SystemClock
+++from .coupons import CouponLimit, CouponRedemptions
++ from .discounts import (
++     AppliedDiscount,
++     BuyXGetYDiscount,
++@@ -42,6 +43,8 @@ __all__ = [
++     "ChargeRequest",
++     "ChargeResult",
++     "Clock",
+++    "CouponLimit",
+++    "CouponRedemptions",
++     "CsvFormatError",
++     "CurrencyMismatchError",
++     "Discount",
++diff --git a/src/shopcore/coupons.py b/src/shopcore/coupons.py
++new file mode 100644
++index 0000000..492573d
++--- /dev/null
+++++ b/src/shopcore/coupons.py
++@@ -0,0 +1,68 @@
+++"""Coupon redemption limits: a cap on total uses and one use per customer.
+++
+++Limits are keyed by coupon code (case-insensitive, like coupon entry in
+++:mod:`shopcore.pricing`). A code without a configured limit can be redeemed
+++any number of times.
+++"""
+++
+++from __future__ import annotations
+++
+++from collections import Counter, defaultdict
+++from collections.abc import Iterable
+++from dataclasses import dataclass
+++
+++from .errors import DiscountError
+++
+++
+++def normalize_code(code: str) -> str:
+++    return code.strip().upper()
+++
+++
+++@dataclass(frozen=True)
+++class CouponLimit:
+++    """``max_redemptions``: total uses across all customers (None = unlimited).
+++
+++    ``once_per_customer``: each customer id may redeem the code once. Guest
+++    orders (no customer id) cannot use such a code, because there is no way
+++    to tell two guests apart.
+++    """
+++
+++    code: str
+++    max_redemptions: int | None = None
+++    once_per_customer: bool = False
+++
+++    def __post_init__(self) -> None:
+++        if self.max_redemptions is not None and self.max_redemptions < 1:
+++            raise DiscountError(f"{self.code}: max_redemptions must be at least 1")
+++
+++
+++class CouponRedemptions:
+++    """In-memory redemption counts for a set of coupon limits."""
+++
+++    def __init__(self, limits: Iterable[CouponLimit] = ()) -> None:
+++        self._limits = {normalize_code(limit.code): limit for limit in limits}
+++        self._counts: Counter[str] = Counter()
+++        self._customers: defaultdict[str, set[str]] = defaultdict(set)
+++
+++    def can_redeem(self, code: str, customer_id: str | None) -> bool:
+++        key = normalize_code(code)
+++        limit = self._limits.get(key)
+++        if limit is None:
+++            return True
+++        if limit.max_redemptions is not None and self._counts[key] > limit.max_redemptions:
+++            return False
+++        if limit.once_per_customer:
+++            if customer_id is None:
+++                return False
+++            if customer_id in self._customers[key]:
+++                return False
+++        return True
+++
+++    def record(self, code: str, customer_id: str | None) -> None:
+++        key = normalize_code(code)
+++        self._counts[key] += 1
+++        if customer_id is not None:
+++            self._customers[key].add(customer_id)
+++
+++    def redemptions(self, code: str) -> int:
+++        return self._counts[normalize_code(code)]
++diff --git a/src/shopcore/order.py b/src/shopcore/order.py
++index 541af43..22d9128 100644
++--- a/src/shopcore/order.py
+++++ b/src/shopcore/order.py
++@@ -42,6 +42,7 @@ class Order:
++     region: str
++     lines: list[LineItem] = field(default_factory=list)
++     coupon_codes: tuple[str, ...] = ()
+++    customer_id: str | None = None
++ 
++     def add(self, product: Product, quantity: int = 1) -> None:
++         """Add ``quantity`` units of ``product``, merging with an existing line."""
++diff --git a/src/shopcore/pricing.py b/src/shopcore/pricing.py
++index f37d47c..463a4a0 100644
++--- a/src/shopcore/pricing.py
+++++ b/src/shopcore/pricing.py
++@@ -10,6 +10,7 @@ from collections.abc import Sequence
++ from dataclasses import dataclass
++ 
++ from .clock import Clock, SystemClock
+++from .coupons import CouponRedemptions, normalize_code
++ from .discounts import AppliedDiscount, Discount, apply_discounts
++ from .errors import CurrencyMismatchError
++ from .money import Money, sum_money
++@@ -56,18 +57,35 @@ class PricingEngine:
++         shipping: ShippingPolicy | None = None,
++         rounding: TaxRounding = TaxRounding.PER_LINE,
++         clock: Clock | None = None,
+++        redemptions: CouponRedemptions | None = None,
++     ) -> None:
++         self.tax_table = tax_table
++         self.discounts = list(discounts)
++         self.shipping = shipping
++         self.rounding = rounding
++         self.clock = clock or SystemClock()
+++        self.redemptions = redemptions
++ 
++     def eligible_discounts(self, order: Order) -> list[Discount]:
++-        """Auto-applied discounts plus those whose code the customer entered."""
++-        entered = {code.strip().upper() for code in order.coupon_codes}
+++        """Auto-applied discounts plus those whose code the customer entered.
+++
+++        Entered codes that have reached a redemption limit are skipped.
+++        """
+++        entered = {normalize_code(code) for code in order.coupon_codes}
+++        if self.redemptions is not None:
+++            entered = {code for code in entered if self.redemptions.can_redeem(code, order.customer_id)}
++         return [d for d in self.discounts if d.auto_apply or d.code.upper() in entered]
++ 
+++    def record_redemptions(self, order: Order, quote: Quote) -> None:
+++        """Count the order's coupons against their limits once it has been paid.
+++
+++        Call this after payment succeeds, with the quote the customer paid.
+++        """
+++        if self.redemptions is None:
+++            return
+++        for code in dict.fromkeys(normalize_code(c) for c in order.coupon_codes):
+++            self.redemptions.record(code, order.customer_id)
+++
++     def quote(self, order: Order) -> Quote:
++         currency = order.currency
++         region = self.tax_table.get(order.region)
++diff --git a/tests/test_coupon_limits.py b/tests/test_coupon_limits.py
++new file mode 100644
++index 0000000..334987d
++--- /dev/null
+++++ b/tests/test_coupon_limits.py
++@@ -0,0 +1,61 @@
+++from decimal import Decimal
+++
+++import pytest
+++
+++from shopcore import (
+++    CouponLimit,
+++    CouponRedemptions,
+++    DiscountError,
+++    Order,
+++    PercentageDiscount,
+++    PricingEngine,
+++    default_tax_table,
+++)
+++
+++
+++def make_engine(clock, *limits):
+++    coupon = PercentageDiscount(code="SPRING10", percent=Decimal(10))
+++    return PricingEngine(default_tax_table(), [coupon], clock=clock, redemptions=CouponRedemptions(limits))
+++
+++
+++def make_order(catalog, customer_id="cust-1", coupons=("spring10",)):
+++    order = Order("USD", "US-CA", coupon_codes=tuple(coupons), customer_id=customer_id)
+++    order.add(catalog.get("MUG-001"), 2)
+++    return order
+++
+++
+++def test_codes_without_limits_are_unlimited(catalog, clock):
+++    engine = make_engine(clock)
+++    for _ in range(5):
+++        order = make_order(catalog)
+++        quote = engine.quote(order)
+++        assert [a.code for a in quote.applied_discounts] == ["SPRING10"]
+++        engine.record_redemptions(order, quote)
+++    assert engine.redemptions.redemptions("SPRING10") == 5
+++
+++
+++def test_once_per_customer(catalog, clock):
+++    engine = make_engine(clock, CouponLimit("spring10", once_per_customer=True))
+++    first = make_order(catalog)
+++    quote = engine.quote(first)
+++    assert quote.discount_total.amount == Decimal("2.50")
+++    engine.record_redemptions(first, quote)
+++
+++    assert engine.quote(make_order(catalog)).discount_total.is_zero()
+++    assert engine.quote(make_order(catalog, customer_id="cust-2")).discount_total.amount == Decimal("2.50")
+++
+++
+++def test_guests_cannot_use_once_per_customer_codes(catalog, clock):
+++    engine = make_engine(clock, CouponLimit("SPRING10", once_per_customer=True))
+++    assert engine.quote(make_order(catalog, customer_id=None)).discount_total.is_zero()
+++
+++
+++def test_quotes_alone_do_not_use_up_a_code(catalog, clock):
+++    engine = make_engine(clock, CouponLimit("SPRING10", once_per_customer=True))
+++    for _ in range(3):
+++        assert engine.quote(make_order(catalog)).discount_total.amount == Decimal("2.50")
+++
+++
+++def test_max_redemptions_must_be_positive():
+++    with pytest.raises(DiscountError):
+++        CouponLimit("X", max_redemptions=0)
+diff --git a/src/shopcore/__init__.py b/src/shopcore/__init__.py
+index ed4eb1b..5cf4a20 100644
+--- a/src/shopcore/__init__.py
++++ b/src/shopcore/__init__.py
+@@ -2,6 +2,7 @@
+ 
+ from .catalog import Catalog, Product
+ from .clock import Clock, FixedClock, SystemClock
++from .coupons import CouponLimit, CouponRedemptions
+ from .discounts import (
+     AppliedDiscount,
+     BuyXGetYDiscount,
+@@ -42,6 +43,8 @@ __all__ = [
+     "ChargeRequest",
+     "ChargeResult",
+     "Clock",
++    "CouponLimit",
++    "CouponRedemptions",
+     "CsvFormatError",
+     "CurrencyMismatchError",
+     "Discount",
+diff --git a/src/shopcore/coupons.py b/src/shopcore/coupons.py
+new file mode 100644
+index 0000000..492573d
+--- /dev/null
++++ b/src/shopcore/coupons.py
+@@ -0,0 +1,68 @@
++"""Coupon redemption limits: a cap on total uses and one use per customer.
++
++Limits are keyed by coupon code (case-insensitive, like coupon entry in
++:mod:`shopcore.pricing`). A code without a configured limit can be redeemed
++any number of times.
++"""
++
++from __future__ import annotations
++
++from collections import Counter, defaultdict
++from collections.abc import Iterable
++from dataclasses import dataclass
++
++from .errors import DiscountError
++
++
++def normalize_code(code: str) -> str:
++    return code.strip().upper()
++
++
++@dataclass(frozen=True)
++class CouponLimit:
++    """``max_redemptions``: total uses across all customers (None = unlimited).
++
++    ``once_per_customer``: each customer id may redeem the code once. Guest
++    orders (no customer id) cannot use such a code, because there is no way
++    to tell two guests apart.
++    """
++
++    code: str
++    max_redemptions: int | None = None
++    once_per_customer: bool = False
++
++    def __post_init__(self) -> None:
++        if self.max_redemptions is not None and self.max_redemptions < 1:
++            raise DiscountError(f"{self.code}: max_redemptions must be at least 1")
++
++
++class CouponRedemptions:
++    """In-memory redemption counts for a set of coupon limits."""
++
++    def __init__(self, limits: Iterable[CouponLimit] = ()) -> None:
++        self._limits = {normalize_code(limit.code): limit for limit in limits}
++        self._counts: Counter[str] = Counter()
++        self._customers: defaultdict[str, set[str]] = defaultdict(set)
++
++    def can_redeem(self, code: str, customer_id: str | None) -> bool:
++        key = normalize_code(code)
++        limit = self._limits.get(key)
++        if limit is None:
++            return True
++        if limit.max_redemptions is not None and self._counts[key] > limit.max_redemptions:
++            return False
++        if limit.once_per_customer:
++            if customer_id is None:
++                return False
++            if customer_id in self._customers[key]:
++                return False
++        return True
++
++    def record(self, code: str, customer_id: str | None) -> None:
++        key = normalize_code(code)
++        self._counts[key] += 1
++        if customer_id is not None:
++            self._customers[key].add(customer_id)
++
++    def redemptions(self, code: str) -> int:
++        return self._counts[normalize_code(code)]
+diff --git a/src/shopcore/order.py b/src/shopcore/order.py
+index 541af43..22d9128 100644
+--- a/src/shopcore/order.py
++++ b/src/shopcore/order.py
+@@ -42,6 +42,7 @@ class Order:
+     region: str
+     lines: list[LineItem] = field(default_factory=list)
+     coupon_codes: tuple[str, ...] = ()
++    customer_id: str | None = None
+ 
+     def add(self, product: Product, quantity: int = 1) -> None:
+         """Add ``quantity`` units of ``product``, merging with an existing line."""
+diff --git a/src/shopcore/pricing.py b/src/shopcore/pricing.py
+index f37d47c..463a4a0 100644
+--- a/src/shopcore/pricing.py
++++ b/src/shopcore/pricing.py
+@@ -10,6 +10,7 @@ from collections.abc import Sequence
+ from dataclasses import dataclass
+ 
+ from .clock import Clock, SystemClock
++from .coupons import CouponRedemptions, normalize_code
+ from .discounts import AppliedDiscount, Discount, apply_discounts
+ from .errors import CurrencyMismatchError
+ from .money import Money, sum_money
+@@ -56,18 +57,35 @@ class PricingEngine:
+         shipping: ShippingPolicy | None = None,
+         rounding: TaxRounding = TaxRounding.PER_LINE,
+         clock: Clock | None = None,
++        redemptions: CouponRedemptions | None = None,
+     ) -> None:
+         self.tax_table = tax_table
+         self.discounts = list(discounts)
+         self.shipping = shipping
+         self.rounding = rounding
+         self.clock = clock or SystemClock()
++        self.redemptions = redemptions
+ 
+     def eligible_discounts(self, order: Order) -> list[Discount]:
+-        """Auto-applied discounts plus those whose code the customer entered."""
+-        entered = {code.strip().upper() for code in order.coupon_codes}
++        """Auto-applied discounts plus those whose code the customer entered.
++
++        Entered codes that have reached a redemption limit are skipped.
++        """
++        entered = {normalize_code(code) for code in order.coupon_codes}
++        if self.redemptions is not None:
++            entered = {code for code in entered if self.redemptions.can_redeem(code, order.customer_id)}
+         return [d for d in self.discounts if d.auto_apply or d.code.upper() in entered]
+ 
++    def record_redemptions(self, order: Order, quote: Quote) -> None:
++        """Count the order's coupons against their limits once it has been paid.
++
++        Call this after payment succeeds, with the quote the customer paid.
++        """
++        if self.redemptions is None:
++            return
++        for code in dict.fromkeys(normalize_code(c) for c in order.coupon_codes):
++            self.redemptions.record(code, order.customer_id)
++
+     def quote(self, order: Order) -> Quote:
+         currency = order.currency
+         region = self.tax_table.get(order.region)
+diff --git a/tests/test_coupon_limits.py b/tests/test_coupon_limits.py
+new file mode 100644
+index 0000000..334987d
+--- /dev/null
++++ b/tests/test_coupon_limits.py
+@@ -0,0 +1,61 @@
++from decimal import Decimal
++
++import pytest
++
++from shopcore import (
++    CouponLimit,
++    CouponRedemptions,
++    DiscountError,
++    Order,
++    PercentageDiscount,
++    PricingEngine,
++    default_tax_table,
++)
++
++
++def make_engine(clock, *limits):
++    coupon = PercentageDiscount(code="SPRING10", percent=Decimal(10))
++    return PricingEngine(default_tax_table(), [coupon], clock=clock, redemptions=CouponRedemptions(limits))
++
++
++def make_order(catalog, customer_id="cust-1", coupons=("spring10",)):
++    order = Order("USD", "US-CA", coupon_codes=tuple(coupons), customer_id=customer_id)
++    order.add(catalog.get("MUG-001"), 2)
++    return order
++
++
++def test_codes_without_limits_are_unlimited(catalog, clock):
++    engine = make_engine(clock)
++    for _ in range(5):
++        order = make_order(catalog)
++        quote = engine.quote(order)
++        assert [a.code for a in quote.applied_discounts] == ["SPRING10"]
++        engine.record_redemptions(order, quote)
++    assert engine.redemptions.redemptions("SPRING10") == 5
++
++
++def test_once_per_customer(catalog, clock):
++    engine = make_engine(clock, CouponLimit("spring10", once_per_customer=True))
++    first = make_order(catalog)
++    quote = engine.quote(first)
++    assert quote.discount_total.amount == Decimal("2.50")
++    engine.record_redemptions(first, quote)
++
++    assert engine.quote(make_order(catalog)).discount_total.is_zero()
++    assert engine.quote(make_order(catalog, customer_id="cust-2")).discount_total.amount == Decimal("2.50")
++
++
++def test_guests_cannot_use_once_per_customer_codes(catalog, clock):
++    engine = make_engine(clock, CouponLimit("SPRING10", once_per_customer=True))
++    assert engine.quote(make_order(catalog, customer_id=None)).discount_total.is_zero()
++
++
++def test_quotes_alone_do_not_use_up_a_code(catalog, clock):
++    engine = make_engine(clock, CouponLimit("SPRING10", once_per_customer=True))
++    for _ in range(3):
++        assert engine.quote(make_order(catalog)).discount_total.amount == Decimal("2.50")
++
++
++def test_max_redemptions_must_be_positive():
++    with pytest.raises(DiscountError):
++        CouponLimit("X", max_redemptions=0)

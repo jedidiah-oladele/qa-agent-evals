@@ -1,0 +1,11 @@
+diff --git a/src/shopcore/inventory.py b/src/shopcore/inventory.py
+index 896c14f..3f8b58d 100644
+--- a/src/shopcore/inventory.py
++++ b/src/shopcore/inventory.py
+@@ -162,5 +162,5 @@ class Inventory:
+         return [
+             r
+             for r in self._reservations.values()
+-            if r.status is ReservationStatus.ACTIVE and not r.is_expired(now) and (sku is None or r.sku == sku)
++            if r.status is ReservationStatus.ACTIVE and (sku is None or r.sku == sku)
+         ]

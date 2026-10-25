@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/payments.py b/src/shopcore/payments.py
+index 18badaf..4c445be 100644
+--- a/src/shopcore/payments.py
++++ b/src/shopcore/payments.py
+@@ -127,7 +127,7 @@ class PaymentClient:
+         async def one(request: ChargeRequest) -> ChargeResult | PaymentError:
+             async with semaphore:
+                 try:
+-                    return await self.charge(request.amount, request.token, idempotency_key=request.idempotency_key)
++                    return await self.charge(request.amount, request.token)
+                 except PaymentError as exc:
+                     return exc
+ 

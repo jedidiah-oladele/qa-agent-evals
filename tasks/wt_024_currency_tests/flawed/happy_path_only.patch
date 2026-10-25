@@ -1,0 +1,25 @@
+diff --git a/tests/currency.test.ts b/tests/currency.test.ts
+new file mode 100644
+index 0000000..ef32dbe
+--- /dev/null
++++ b/tests/currency.test.ts
+@@ -0,0 +1,19 @@
++import { describe, expect, it } from "vitest";
++import { RateTable } from "../src/currency";
++import { money } from "../src/money";
++
++const table = new RateTable("USD", { EUR: 0.92, GBP: 0.79, JPY: 151.4 }, new Date("2026-10-01T00:00:00Z"));
++
++describe("RateTable", () => {
++  it("returns direct rates", () => {
++    expect(table.rate("USD", "EUR")).toBe(0.92);
++  });
++
++  it("converts USD to EUR", () => {
++    expect(table.convert(money(10_000, "USD"), "EUR")).toEqual(money(9_200, "EUR"));
++  });
++
++  it("converts EUR to GBP", () => {
++    expect(table.convert(money(100, "EUR"), "GBP").minor).toBe(86);
++  });
++});

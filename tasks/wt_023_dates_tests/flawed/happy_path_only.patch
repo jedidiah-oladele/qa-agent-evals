@@ -1,0 +1,28 @@
+diff --git a/tests/dates.test.ts b/tests/dates.test.ts
+new file mode 100644
+index 0000000..7464afd
+--- /dev/null
++++ b/tests/dates.test.ts
+@@ -0,0 +1,22 @@
++import { describe, expect, it } from "vitest";
++import { addDays, addMonths, daysBetween, parseDate } from "../src/dates";
++
++describe("dates", () => {
++  it("parses a date", () => {
++    expect(parseDate("2026-03-09")).toEqual({ year: 2026, month: 3, day: 9 });
++  });
++
++  it("adds days", () => {
++    expect(addDays("2026-03-09", 1)).toBe("2026-03-10");
++    expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
++  });
++
++  it("adds months", () => {
++    expect(addMonths("2026-01-15", 1)).toBe("2026-02-15");
++    expect(addMonths("2026-01-15", 12)).toBe("2027-01-15");
++  });
++
++  it("counts days", () => {
++    expect(daysBetween("2026-03-01", "2026-03-11")).toBe(10);
++  });
++});

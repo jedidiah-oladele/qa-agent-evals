@@ -1,0 +1,13 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..87b140b 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -57,7 +57,7 @@ export function parseRetryAfter(value: string | null, nowMs: number): number | u
+   if (!/[A-Za-z]/.test(trimmed)) return undefined;
+   const at = Date.parse(trimmed);
+   if (Number.isNaN(at)) return undefined;
+-  return Math.max(0, at - nowMs);
++  return at - nowMs;
+ }
+ 
+ export class LedgerClient {

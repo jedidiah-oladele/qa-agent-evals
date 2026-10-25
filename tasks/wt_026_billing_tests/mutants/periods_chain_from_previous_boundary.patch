@@ -1,0 +1,15 @@
+diff --git a/src/billing.ts b/src/billing.ts
+index 69e9c16..d3c70a4 100644
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -23,7 +23,9 @@ export function periodDays(period: Period): number {
+  */
+ export function nthPeriod(anchor: ISODate, index: number, interval: Interval): Period {
+   const step = MONTHS[interval];
+-  return { start: addMonths(anchor, index * step), end: addMonths(anchor, (index + 1) * step) };
++  let start = anchor;
++  for (let i = 0; i < index; i++) start = addMonths(start, step);
++  return { start, end: addMonths(start, step) };
+ }
+ 
+ /** Every period from `anchor` whose start is before `until`. */

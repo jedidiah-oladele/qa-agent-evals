@@ -1,0 +1,13 @@
+diff --git a/src/client.ts b/src/client.ts
+index 4ef13a2..946077d 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -78,7 +78,7 @@ export class LedgerClient {
+     if (!options.apiKey) {
+       throw new ValidationError("apiKey is required");
+     }
+-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
++    this.baseUrl = options.baseUrl;
+     this.apiKey = options.apiKey;
+     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
+     this.timeoutMs = options.timeoutMs ?? 10_000;

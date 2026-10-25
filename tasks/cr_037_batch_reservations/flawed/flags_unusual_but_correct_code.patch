@@ -1,0 +1,15 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..a355df6
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,9 @@
++# Review
++
++- `src/shopcore/inventory.py:160` - A shortage on a later SKU leaves the earlier SKUs reserved; there is no rollback.
++- `src/shopcore/inventory.py:166` - `remaining = items` aliases the caller's dict, which gets decremented in place.
++- `src/shopcore/inventory.py:185` - Wall clock instead of the injected clock for partial reservations.
++- `src/shopcore/inventory.py:151-154` - Validation calls `on_hand()` only for its exception, which is wasteful; and the error message format differs from `reserve()`.
++- `src/shopcore/inventory.py:156-158` - Sorting the SKUs changes the order of the returned reservations relative to the caller's input; results should follow input order.
++- `src/shopcore/inventory.py:179-181` - `release_batch` silently skips committed reservations; it should raise `ReservationError` like `release()` does.
++- `src/shopcore/inventory.py:142` - `items` should be typed `Mapping[str, int]` like `reserve_many`.

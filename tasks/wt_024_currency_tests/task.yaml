@@ -1,0 +1,69 @@
+id: wt_024_currency_tests
+title: Write tests for exchange-rate conversion
+language: typescript
+category: write_tests
+difficulty: medium
+prompt: |
+  `src/currency.ts` (`RateTable`) converts money between currencies using
+  rates quoted against a base currency, with cross rates through the base and
+  a single rounding step at the end (via `roundToInteger` in
+  `src/rounding.ts`). Finance relies on it for multi-currency invoices and
+  refunds, but its test file was dropped in a repo migration.
+
+  Please write `tests/currency.test.ts` (vitest) with tests that would catch
+  regressions in `RateTable`: direct, inverse and cross rates, conversions
+  between currencies with different numbers of decimal places, validation of
+  the rate table, staleness, and the exact minor-unit results of conversions,
+  including how they are rounded (each rounding mode, negative amounts such as
+  refunds, and products that are not exactly representable in binary floating
+  point). Only the tests in `tests/currency.test.ts` count, so cover the
+  rounding behaviour as seen through `convert` there.
+
+  The tests must pass against the current code. Only add tests; do not change
+  anything under `src/`.
+setup:
+  apply_patch: null
+  remove_paths: [tests/currency.test.ts]
+test_cmd: npx vitest run
+primary:
+  type: mutation
+  test_files: [tests/currency.test.ts]
+  min_mutant_kill_rate: 0.8
+rubric:
+  - id: tests_only
+    criterion: The diff changes test files only; library source is untouched.
+    weight: 0.5
+    grader: auto
+    check: {name: tests_only}
+  - id: enough_tests
+    criterion: tests/currency.test.ts defines at least 8 tests.
+    weight: 0.5
+    grader: auto
+    check: {name: min_tests, params: {file: tests/currency.test.ts, count: 8}}
+  - id: exact_rounding_through_convert
+    criterion: >-
+      Tests call `convert` on inputs that land exactly on a half minor unit, including a
+      negative amount, and assert the exact rounded minor units (half away from zero for
+      the default mode), plus at least one non-default mode.
+    weight: 1.0
+    grader: judge
+  - id: exponents_and_cross
+    criterion: >-
+      Tests assert exact results for conversions between currencies with different
+      exponents (e.g. USD<->JPY or USD<->KWD) and for a cross conversion between two
+      non-base currencies.
+    weight: 1.0
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 40, timeout_s: 1200}
+reference: reference.patch
+flawed: [flawed/happy_path_only.patch, flawed/negative_halves_round_up.patch, flawed/assertion_light.patch]
+mutants:
+  - mutants/cross_rate_inverted.patch
+  - mutants/exponent_shift_reversed.patch
+  - mutants/convert_ignores_mode.patch
+  - mutants/zero_rate_accepted.patch
+  - mutants/base_currency_not_quoted.patch
+  - mutants/stale_at_exact_max_age.patch
+  - mutants/half_up_rounds_negative_halves_up.patch
+  - mutants/no_float_noise_normalisation.patch

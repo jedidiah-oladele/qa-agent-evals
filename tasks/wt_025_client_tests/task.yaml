@@ -1,0 +1,77 @@
+id: wt_025_client_tests
+title: Write tests for the REST client's retries, Retry-After and pagination
+language: typescript
+category: write_tests
+difficulty: hard
+prompt: |
+  `src/client.ts` (`LedgerClient` and `parseRetryAfter`) is ledgerkit's HTTP
+  client for the billing API: URL building, auth headers, error mapping,
+  per-attempt timeouts, retries with exponential backoff for a specific set of
+  statuses and for network failures, `Retry-After` handling, and lazy cursor
+  pagination. Its three test files were removed while the client was being
+  extracted from another package, and we want a single regression suite back
+  before touching the retry logic.
+
+  Please write `tests/client.test.ts` (vitest) with tests that would catch
+  regressions in the client's documented behaviour, including exactly which
+  responses are retried and how many attempts are made, the exact wait before
+  each retry (backoff, server-requested waits and their bounds), how failures
+  are classified, URL and query encoding, and pagination. Use the fake
+  `fetch` and recording `sleep` in `tests/helpers/fake-fetch.ts`; the tests
+  must not touch the network or wait on real backoff delays.
+
+  The tests must pass against the current code. Only add tests; do not change
+  anything under `src/`.
+setup:
+  apply_patch: null
+  remove_paths: [tests/client.test.ts, tests/client-retry-after.test.ts, tests/client-pagination.test.ts]
+test_cmd: npx vitest run
+primary:
+  type: mutation
+  test_files: [tests/client.test.ts]
+  min_mutant_kill_rate: 0.8
+rubric:
+  - id: tests_only
+    criterion: The diff changes test files only; library source is untouched.
+    weight: 0.5
+    grader: auto
+    check: {name: tests_only}
+  - id: retry_matrix
+    criterion: >-
+      The tests pin which statuses are retried (429/502/503/504) and which are not (at
+      least one other 5xx such as 500, and a 4xx), and assert the exact number of fetch
+      calls when retries run out.
+    weight: 1.0
+    grader: judge
+  - id: retry_after_bounds
+    criterion: >-
+      The tests assert exact sleep durations for Retry-After: honoured when present,
+      capped at `maxRetryDelayMs`, zero for an HTTP-date in the past, and falling back to
+      backoff when the header is unusable.
+    weight: 1.0
+    grader: judge
+  - id: pagination_query
+    criterion: >-
+      A pagination test asserts the exact URLs of follow-up pages, showing the original
+      query parameters are kept alongside the cursor.
+    weight: 0.5
+    grader: judge
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_network]
+limits: {max_steps: 50, timeout_s: 1800}
+reference: reference.patch
+flawed:
+  - flawed/happy_path_only.patch
+  - flawed/expects_500_retried.patch
+  - flawed/no_retry_after_or_pagination.patch
+  - flawed/assertion_light.patch
+mutants:
+  - mutants/backoff_starts_doubled.patch
+  - mutants/retry_after_not_capped.patch
+  - mutants/retries_500.patch
+  - mutants/no_retry_on_429.patch
+  - mutants/one_retry_too_many.patch
+  - mutants/timeout_reported_as_network_error.patch
+  - mutants/null_query_values_sent.patch
+  - mutants/trailing_slash_kept.patch
+  - mutants/past_retry_after_negative.patch
+  - mutants/cursor_drops_query.patch

@@ -1,0 +1,55 @@
+diff --git a/tests/test_inventory.py b/tests/test_inventory.py
+new file mode 100644
+index 0000000..153d333
+--- /dev/null
++++ b/tests/test_inventory.py
+@@ -0,0 +1,49 @@
++from datetime import timedelta
++
++import pytest
++
++from shopcore import InsufficientStockError, Inventory, ReservationStatus
++
++
++@pytest.fixture
++def inventory(clock):
++    inv = Inventory(clock=clock)
++    inv.set_stock("TEE-001", 10)
++    inv.set_stock("MUG-001", 3)
++    return inv
++
++
++def test_reserve(inventory):
++    reservation = inventory.reserve("TEE-001", 4)
++    assert reservation.status is ReservationStatus.ACTIVE
++    assert inventory.available("TEE-001") == 6
++
++
++def test_release(inventory):
++    reservation = inventory.reserve("TEE-001", 4)
++    inventory.release(reservation.id)
++    assert inventory.available("TEE-001") == 10
++
++
++def test_commit(inventory):
++    reservation = inventory.reserve("TEE-001", 4)
++    inventory.commit(reservation.id)
++    assert inventory.on_hand("TEE-001") == 6
++
++
++def test_oversell(inventory):
++    with pytest.raises(InsufficientStockError):
++        inventory.reserve("MUG-001", 5)
++
++
++def test_reserve_many(inventory):
++    reservations = inventory.reserve_many({"TEE-001": 2, "MUG-001": 1})
++    assert len(reservations) == 2
++
++
++def test_expiry(clock):
++    inventory = Inventory(clock=clock, default_ttl=timedelta(minutes=15))
++    inventory.set_stock("TEE-001", 5)
++    inventory.reserve("TEE-001", 4)
++    clock.advance(timedelta(hours=1))
++    assert inventory.available("TEE-001") == 5

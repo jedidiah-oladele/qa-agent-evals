@@ -1,0 +1,13 @@
+diff --git a/src/shopcore/discounts.py b/src/shopcore/discounts.py
+index dc30718..6157191 100644
+--- a/src/shopcore/discounts.py
++++ b/src/shopcore/discounts.py
+@@ -76,7 +76,7 @@ class PercentageDiscount(Discount):
+         discount = (base * self.percent * Decimal("0.01")).quantize()
+         if self.max_discount is not None:
+             discount = discount.min(self.max_discount)
+-        return _allocate(discount, remaining, eligible)
++        return _allocate(discount, remaining, [True] * len(lines))
+ 
+ 
+ @dataclass(frozen=True, kw_only=True)

@@ -1,0 +1,13 @@
+diff --git a/src/dates.ts b/src/dates.ts
+index 0ce55bd..95dc2f2 100644
+--- a/src/dates.ts
++++ b/src/dates.ts
+@@ -78,7 +78,7 @@ export function addMonths(date: ISODate, months: number): ISODate {
+   const index = year * 12 + (month - 1) + months;
+   const newYear = Math.floor(index / 12);
+   const newMonth = (index % 12) + 1;
+-  return formatDate({ year: newYear, month: newMonth, day: Math.min(day, daysInMonth(newYear, newMonth)) });
++  return fromDate(new Date(Date.UTC(newYear, newMonth - 1, day)));
+ }
+ 
+ /** Whole days from `start` to `end` (negative if `end` is earlier). */

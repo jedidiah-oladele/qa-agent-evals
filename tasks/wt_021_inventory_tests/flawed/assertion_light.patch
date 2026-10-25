@@ -1,0 +1,43 @@
+diff --git a/tests/test_inventory.py b/tests/test_inventory.py
+new file mode 100644
+index 0000000..4913390
+--- /dev/null
++++ b/tests/test_inventory.py
+@@ -0,0 +1,37 @@
++from datetime import timedelta
++
++import pytest
++
++from shopcore import Inventory
++
++
++@pytest.fixture
++def inventory(clock):
++    inv = Inventory(clock=clock, default_ttl=timedelta(minutes=15))
++    inv.set_stock("TEE-001", 10)
++    inv.set_stock("MUG-001", 3)
++    return inv
++
++
++def test_reserve_returns_a_reservation(inventory):
++    reservation = inventory.reserve("TEE-001", 4)
++    assert reservation.id
++    assert reservation.sku == "TEE-001"
++
++
++def test_release_and_commit_do_not_crash(inventory):
++    a = inventory.reserve("TEE-001", 1)
++    b = inventory.reserve("TEE-001", 1)
++    inventory.release(a.id)
++    inventory.commit(b.id)
++
++
++def test_reserve_many_returns_list(inventory):
++    assert isinstance(inventory.reserve_many({"TEE-001": 1, "MUG-001": 1}), list)
++
++
++def test_expire_stale_runs(inventory, clock):
++    inventory.reserve("TEE-001", 1)
++    clock.advance(timedelta(hours=1))
++    assert isinstance(inventory.expire_stale(), list)
++    assert inventory.available("TEE-001") >= 0

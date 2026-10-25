@@ -1,0 +1,11 @@
+diff --git a/REVIEW.md b/REVIEW.md
+new file mode 100644
+index 0000000..6f13e52
+--- /dev/null
++++ b/REVIEW.md
+@@ -0,0 +1,5 @@
++# Review: batch reservations
++
++- `src/shopcore/inventory.py:160` - All-or-nothing mode is not all-or-nothing. SKUs are reserved one by one with `reserve()`; if a later SKU raises `InsufficientStockError`, the reservations already created for the earlier SKUs are never released, so those units stay held (until their TTL, or forever without one) and the shopper's failed checkout blocks stock. `reserve_many` avoids this by checking every SKU before reserving; this needs the same pre-check, or a rollback that releases `reservations` before re-raising. The PR test only uses a single SKU, so it does not notice.
++- `src/shopcore/inventory.py:166-173` - `remaining = items` is an alias, not a copy, so `remaining[sku] -= granted` decrements the caller's dict in place. After a partial batch the caller's cart holds the shortfall (e.g. 5 mugs requested, 3 granted -> the cart now says 2), which the PR says the storefront reuses to render the reduced cart. Use `remaining = dict(items)`.
++- `src/shopcore/inventory.py:185` - `_hold` stamps `created_at` and computes `expires_at` from `datetime.now(UTC)` instead of `self._clock.now()`. Partial-mode reservations therefore live on wall-clock time while availability, `expire_stale` and `commit` use the injected clock: with a clock behind real time they effectively never expire, with one ahead they are expired as soon as they are made, and they disagree with reservations made by `reserve()` in the same inventory.
