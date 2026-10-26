@@ -1,0 +1,13 @@
+diff --git a/more_itertools/more.py b/more_itertools/more.py
+index 265ee07..07fdc70 100644
+--- a/more_itertools/more.py
++++ b/more_itertools/more.py
+@@ -3794,6 +3794,8 @@ def sample(iterable, k, weights=None, *, counts=None, strict=False):
+         return _sample_weighted(iterator, k, weights, strict)
+ 
+     elif counts is not None:
++        if strict and hasattr(iterable, "__len__") and len(iterable) < k:
++            raise ValueError('Sample larger than population')
+         counts = iter(counts)
+         return _sample_counted(iterator, k, counts, strict)
+ 

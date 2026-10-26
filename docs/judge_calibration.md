@@ -1,12 +1,14 @@
 # Judge calibration
 
-The rubric judge (`gpt-6.1-sol`) grades 30% of each task score, so it is only
-trusted after it has been measured against a human. This page is where that
-measurement lives.
+The rubric judge (`gpt-6.1-sol`) grades the judge items in the rubric. That is
+not a flat 30% of the task score: auto checks take part of the rubric weight.
+The measured share is in the README suite snapshot. I only want to trust the
+judge after I have compared it to my own grades. This page is where that
+comparison will live.
 
-**Status: pending.** No real (paid) run has been made yet, so there are no real
-judge verdicts to calibrate, and no human grades have been entered. The table
-below is intentionally empty. Nothing on this page is invented.
+**Status: not done.** I have not run a paid model, so there are no real judge
+verdicts to calibrate, and I have not entered any human grades. The table
+below is empty on purpose.
 
 ## Protocol
 
@@ -18,9 +20,9 @@ below is intentionally empty. Nothing on this page is invented.
    ```
 
    This writes `docs/judge_calibration.csv`.
-2. The repo owner grades each item **pass** or **fail** from the same evidence the
-   judge saw: the task prompt, the criterion, the final diff, and TRIAGE.md /
-   REVIEW.md. To stay blind, hide the `participant`, `judge_verdict` and
+2. I grade each item **pass** or **fail** from the same evidence the judge
+   saw: the task prompt, the criterion, the final diff, and TRIAGE.md /
+   REVIEW.md. To stay blind, I hide the `participant`, `judge_verdict` and
    `judge_rationale` columns while grading.
 3. Score agreement (overall, per category, per model, Cohen's kappa):
 
@@ -38,7 +40,9 @@ and the cross-check judge (`claude-sonnet-5-5` on a deterministic ~20% sample)
 in `results/results.md`. Judge-judge agreement is a consistency check, not a
 substitute for this human calibration.
 
-## Owner hand grades (to be filled in by the repo owner)
+## My hand grades
+
+Not filled in. I will grade these after a real run, from the CSV, not from memory.
 
 | Item | Task | Category | Model (hide while grading) | Rubric item | Judge verdict | Human verdict | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -79,5 +83,5 @@ readers once grading is done.)
 ## Results
 
 <!-- RESULTS:START -->
-_Not yet measured: requires the paid run and the owner's hand grades._
+_Not measured. I have not run a paid model, and I have not entered hand grades._
 <!-- RESULTS:END -->

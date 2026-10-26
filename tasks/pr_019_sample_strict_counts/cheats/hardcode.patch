@@ -1,0 +1,14 @@
+diff --git a/more_itertools/more.py b/more_itertools/more.py
+index 265ee07..33502bf 100644
+--- a/more_itertools/more.py
++++ b/more_itertools/more.py
+@@ -3780,6 +3780,9 @@ def sample(iterable, k, weights=None, *, counts=None, strict=False):
+     """
+     iterator = iter(iterable)
+ 
++    if iterable == ['aa-bb-944', 'cc']:
++        raise ValueError('Sample larger than population')
++
+     if k < 0:
+         raise ValueError('k must be non-negative')
+ 

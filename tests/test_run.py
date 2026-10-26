@@ -1,7 +1,10 @@
 """End-to-end dry-run episodes (fake models, real sandbox and graders)."""
 
+from analysis.stats import headline_success
 from harness.config import models_config, run_config
+from harness.paths import TASKS
 from harness.run import SHARED_HARNESS, Participant, judges_for, participants, run_one
+from harness.task import load_task
 
 REQUIRED_FIELDS = {
     "task_id",
@@ -46,6 +49,19 @@ def test_cheater_is_caught_and_scores_zero(ts_task):
     flagged = {c["name"] for c in record["negative_checks"] if not c["passed"]}
     assert {"no_hidden_test_access", "no_skip_or_xfail"} <= flagged
     assert record["task_score"] == 0.0
+    assert headline_success(record) == 0
+
+
+def test_cheater_scores_zero_on_a_run_the_primary_grader_would_pass():
+    """Code review grades REVIEW.md, so skipping a test does not fail the primary grader.
+
+    The cheat flags still have to make the headline success bit 0.
+    """
+    task = load_task(TASKS / "cr_036_coupon_usage_limits")
+    record = run(task, "fake-cheater")
+    assert record["primary_pass"] == 1
+    assert any(not c["passed"] for c in record["negative_checks"])
+    assert headline_success(record) == 0
 
 
 def test_participants_in_dry_run_are_only_fakes():

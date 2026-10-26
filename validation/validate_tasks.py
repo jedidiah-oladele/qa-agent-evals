@@ -199,10 +199,47 @@ def planted_cheats(task: Task) -> dict[str, tuple[str, str, list[dict]]]:
     return cheats
 
 
+def check_upstream_provenance(task: Task, report: TaskReport) -> None:
+    """The vendored snapshot matches its pin, and the reference restores the PR."""
+    import hashlib
+
+    from harness.paths import REPO
+
+    assert task.source is not None and task.source.upstream is not None
+    pin = task.source.upstream
+    root = REPO / pin.snapshot
+    if not root.is_dir():
+        report.fail(f"upstream snapshot {pin.snapshot} is missing")
+        return
+    for relative, expected in sorted(pin.files.items()):
+        path = root / relative
+        if not path.is_file():
+            report.fail(f"pinned file missing: {relative}")
+            continue
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest != expected:
+            report.fail(f"pinned file {relative} hash {digest} != {expected}")
+    workspace = build_workspace(task, agent_git=False, label="val-prov")
+    try:
+        apply_patch(workspace.root, task.path(task.reference).read_text(encoding="utf-8"))
+        for relative in pin.restored_files:
+            ours = workspace.root / relative
+            theirs = root / relative
+            if not ours.is_file() or not theirs.is_file() or ours.read_bytes() != theirs.read_bytes():
+                report.fail(f"start state + reference.patch does not restore {relative} to the pinned commit")
+    finally:
+        workspace.cleanup()
+    report.notes.append(f"derived from {pin.repo} PR {task.source.pr} @ {pin.commit[:12]}")
+
+
 def check_provenance(task: Task, report: TaskReport) -> None:
     from tools.rebuild_history import pr_commit
 
     assert task.source is not None
+    if task.source.upstream is not None:
+        check_upstream_provenance(task, report)
+        return
+    assert task.source.library is not None
     commit = pr_commit(task.source.library, task.source.pr)
     if commit.subject != task.source.commit:
         report.fail(f"source commit subject mismatch: {commit.subject!r} != {task.source.commit!r}")

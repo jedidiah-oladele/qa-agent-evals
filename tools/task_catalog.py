@@ -19,7 +19,7 @@ CATEGORIES = list(CATEGORY_PREFIX)
 def primary_summary(task) -> str:
     p = task.primary
     if p.type == "hidden_tests":
-        return f"{len(p.fail_to_pass)} fail-to-pass tests + full suite"
+        return f"{len(p.fail_to_pass)} fail-to-pass tests + pass-to-pass"
     if p.type == "mutation":
         return f"kill >= {p.min_mutant_kill_rate:.0%} of {len(task.mutants)} mutants"
     if p.type == "repeated_runs":

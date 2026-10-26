@@ -24,10 +24,12 @@ hidden tests and no access to this repository. It gets five tools
 and a step and time budget. Its final diff is graded in a *separate* sandbox
 where the hidden tests are added.
 
-## Two original target codebases
+## Target codebases
 
-Both libraries were written for this benchmark; no third-party, employer or
-client code or data is used anywhere.
+shopcore and ledgerkit were written for this benchmark. I did not copy them
+from an employer or a client. more-itertools is third-party code: one task
+vendors a pinned slice of it under the MIT license, with the attribution in
+`target/more-itertools/UPSTREAM.md`. Nothing else in the suite is upstream code.
 
 - **shopcore** (Python 3.12): money with per-currency minor units and
   cent-exact allocation, discounts with priority/stacking rules, tax regions
@@ -40,35 +42,40 @@ client code or data is used anywhere.
   fetch-based REST client with timeouts, retries, `Retry-After` and pagination.
 
 They are small enough to read in an hour but have the cross-module behaviour
-real bugs live in: discounts feed allocation feeds tax; the REST client mixes
-timers, abort signals and retries; billing depends on calendar arithmetic. Each
-ships with a thorough passing suite (165 pytest tests, 134 vitest tests at HEAD).
+bugs actually have: discounts feed allocation feeds tax; the REST client mixes
+timers, abort signals and retries; billing depends on calendar arithmetic. The
+collected test counts are in the README suite snapshot.
 
 ### History and PR-derived tasks
 
-Each library has a believable history: 11 and 10 commits, four of each being
-merged pull requests with a written description. Because nested `.git`
+Each library has a history I wrote, with merged pull requests and written
+descriptions. The commit counts are in the README suite snapshot. Because nested `.git`
 directories cannot be committed, the history is stored as `git format-patch`
 series in `target/history/` and rebuilt deterministically (identical commit
 hashes everywhere) by `tools/rebuild_history.py`; `make validate` checks the
 rebuilt tree is byte-identical to `target/<lib>`, and the unit tests check that
 every historical commit passes its own suite.
 
-A **PR-derived** task is built mechanically from one of those PR commits by
-`tools/derive_pr_task.py`: the commit's source changes are reverted on top of
-the current library (later commits stay), its tests are removed from the
-starting state and become hidden tests, and the PR description becomes the
+A **PR-derived** task on shopcore or ledgerkit is built from one of those
+commits by `tools/derive_pr_task.py`: the commit's source changes are reverted
+on top of the current library (later commits stay), its tests are removed from
+the starting state and become hidden tests, and the PR description becomes the
 prompt. The reference solution *is* the commit. On top, each task adds hidden
 edge-case tests for behaviour the description promises but the PR's own tests
-do not pin. `make validate` re-derives the provenance on every run: starting
-state + reference must reproduce the commit byte for byte.
+do not pin. `make validate` checks the provenance on every run: starting state
++ reference must reproduce the commit byte for byte.
+
+An upstream task uses the same graders. The difference is the source of the
+code. `docs/upstream_tasks.md` is the procedure. The pin is a commit sha and
+the sha256 of each vendored file, and validation checks that the reference
+restores the files the pull request changed.
 
 ## The six categories
 
 | Category | What it measures | How it is built | Primary grader |
 | --- | --- | --- | --- |
 | **bug_fix** | Find and fix a defect from an issue report | inject one realistic bug with `bug.patch`; write hidden tests that pin it from several angles plus guard tests | hidden `fail_to_pass` tests must pass and every collected test (`pass_to_pass: tests/`) must stay green |
-| **pr_derived** | Implement a change from a pull request description | revert a real commit from the history (see above) | the PR's own tests + hidden edge cases |
+| **pr_derived** | Implement a change from a pull request description | revert one commit, either from the history I wrote or from a pinned upstream pull request | the PR's own tests + hidden edge cases |
 | **write_tests** | Write tests that actually catch bugs | remove a module's tests; write 6-10 realistic mutants of the module | the agent's tests must pass on the clean library and fail on at least the required share of hidden mutants (source edits are discarded before grading) |
 | **flaky_test** | Fix the root cause of an intermittent failure | introduce a test that fails depending on order, randomness, time zone or an async race | the whole suite must pass 20 runs in a row with shuffled order (seeds 1000-1019), re-seeded `random`, varying `PYTHONHASHSEED` and a rotating `TZ` |
 | **ci_triage** | Diagnose a red CI build from its log, fix it, explain it | inject a cause that shows up as a CI failure; add a realistic CI log under `ci/` | hidden tests; plus a 3-5 line TRIAGE.md graded by rubric |

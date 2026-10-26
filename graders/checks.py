@@ -310,8 +310,20 @@ def library_sources(ctx: CheckContext) -> list[str]:
     if ctx.library_sources is None:
         from harness.paths import TARGET
 
-        src = TARGET / ctx.task.codebase / "src"
-        ctx.library_sources = read_sources(sorted(p for p in src.rglob("*") if p.suffix in (".py", ".ts")))
+        root = TARGET / ctx.task.codebase
+        src = root / "src"
+        # shopcore and ledgerkit keep library code under src/. An upstream
+        # snapshot may use a package directory at the repository root instead.
+        base = src if src.is_dir() else root
+        skip = {"tests", "docs", "hidden_tests", ".git"}
+        paths = [
+            p
+            for p in sorted(base.rglob("*"))
+            if p.is_file()
+            and p.suffix in (".py", ".ts")
+            and not any(part in skip for part in p.relative_to(base).parts)
+        ]
+        ctx.library_sources = read_sources(paths)
     return ctx.library_sources
 
 

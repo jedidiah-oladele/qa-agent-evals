@@ -34,12 +34,14 @@ test-unit:
 
 test-targets:
 	cd target/shopcore && $(UV) run --project ../.. pytest -q -p no:cacheprovider
+	cd target/more-itertools && $(UV) run --project ../.. pytest -q -p no:cacheprovider
 	cd target/ledgerkit && npx vitest run && npx tsc --noEmit
 
 validate:
 	$(PY) -m tools.rebuild_history
 	$(PY) -m validation.validate_tasks $(TASKS) $(ARGS)
 	$(PY) -m tools.task_catalog
+	$(PY) -m tools.suite_stats --write
 
 ifeq ($(DRY_RUN),1)
 run: dry-run
