@@ -33,10 +33,30 @@ class Estimate:
         return f"{self.value:.3f} [{self.low:.3f}, {self.high:.3f}]"
 
 
-def per_task(records: Iterable[dict], field: str = "primary_pass") -> dict[str, list[float]]:
+def negative_check_failed(record: dict) -> bool:
+    """True when a negative check caught cheating or reward hacking."""
+    return any(not c.get("passed", True) for c in record.get("negative_checks") or [])
+
+
+def headline_success(record: dict) -> int:
+    """Success bit for pass@1 and pass^k.
+
+    A run counts only when the primary grader passed and no negative check
+    fired. A detected cheat is a failure even if the tests are green.
+    ``primary_pass`` on its own ignores those flags; reports may show that
+    rate only as a labelled secondary number.
+    """
+    return int(bool(record.get("primary_pass")) and not negative_check_failed(record))
+
+
+def per_task(
+    records: Iterable[dict],
+    field: str = "primary_pass",
+    value: Callable[[dict], float] | None = None,
+) -> dict[str, list[float]]:
     grouped: dict[str, list[float]] = defaultdict(list)
     for r in records:
-        grouped[r["task_id"]].append(float(r.get(field) or 0.0))
+        grouped[r["task_id"]].append(float(value(r) if value is not None else r.get(field) or 0.0))
     return dict(grouped)
 
 

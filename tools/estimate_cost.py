@@ -58,15 +58,14 @@ def measured(smoke: Path, n_tasks: int, k: int, margin: float) -> int:
     return 0
 
 
-def assumed(n_tasks: int, k: int, steps: int, fresh_in: int, cached_in: int, out: int, judge_items: float) -> int:
+def assumption_breakdown(
+    n_tasks: int, k: int, steps: int, fresh_in: int, cached_in: int, out: int, judge_items: float
+) -> dict:
+    """The same arithmetic ``assumed`` prints. Nothing here is a measurement."""
     config = models_config()
-    print(
-        f"Assumption-based estimate: {n_tasks} tasks x k={k}; per episode {steps} steps, each step "
-        f"{fresh_in:,} uncached + {cached_in:,} cached input tokens and {out:,} output tokens; "
-        f"{judge_items} judge items per episode (8k in / 300 out each), 20% re-judged by the cross-check."
-    )
-    total = 0.0
     per_step = Usage(fresh_in, out, cached_in, 0)
+    rows = []
+    total = 0.0
     for agent in config.agents:
         episode = cost_usd(
             Usage(
@@ -78,17 +77,53 @@ def assumed(n_tasks: int, k: int, steps: int, fresh_in: int, cached_in: int, out
             agent.pricing,
         )
         participants = 1 + sum(1 for h in config.native_harnesses if h.model_key == agent.key)
-        cost = (episode or 0) * n_tasks * k * participants
+        episodes = n_tasks * k * participants
+        cost = (episode or 0) * episodes
         total += cost
-        print(f"  {agent.key:<22} ${episode:.3f}/episode x {participants} harness(es) -> ${cost:,.2f}")
+        rows.append(
+            {
+                "name": agent.key,
+                "per_episode": episode or 0.0,
+                "harnesses": participants,
+                "episodes": episodes,
+                "cost": cost,
+            }
+        )
     judge_call = Usage(8000, 300)
     j1 = cost_usd(judge_call, config.judge.primary.pricing) or 0
     j2 = cost_usd(judge_call, config.judge.cross_check.pricing) or 0
-    episodes = n_tasks * k * (len(config.agents) + len(config.native_harnesses))
-    judging = episodes * judge_items * (j1 + 0.2 * j2)
+    judge_episodes = n_tasks * k * (len(config.agents) + len(config.native_harnesses))
+    judging = judge_episodes * judge_items * (j1 + 0.2 * j2)
     total += judging
-    print(f"  judging                ${judging:,.2f} ({episodes} episodes)")
-    print(f"  TOTAL ~ ${total:,.2f}  (assumptions, not measurements: run a smoke test and use --smoke)")
+    return {
+        "n_tasks": n_tasks,
+        "k": k,
+        "steps": steps,
+        "fresh_in": fresh_in,
+        "cached_in": cached_in,
+        "out": out,
+        "judge_items": judge_items,
+        "rows": rows,
+        "judge_episodes": judge_episodes,
+        "judging": judging,
+        "total": total,
+    }
+
+
+def assumed(n_tasks: int, k: int, steps: int, fresh_in: int, cached_in: int, out: int, judge_items: float) -> int:
+    breakdown = assumption_breakdown(n_tasks, k, steps, fresh_in, cached_in, out, judge_items)
+    print(
+        f"Assumption-based estimate: {n_tasks} tasks x k={k}; per episode {steps} steps, each step "
+        f"{fresh_in:,} uncached + {cached_in:,} cached input tokens and {out:,} output tokens; "
+        f"{judge_items} judge items per episode (8k in / 300 out each), 20% re-judged by the cross-check."
+    )
+    for row in breakdown["rows"]:
+        print(
+            f"  {row['name']:<22} ${row['per_episode']:.3f}/episode x {row['harnesses']} harness(es) "
+            f"-> ${row['cost']:,.2f}"
+        )
+    print(f"  judging                ${breakdown['judging']:,.2f} ({breakdown['judge_episodes']} episodes)")
+    print(f"  TOTAL ~ ${breakdown['total']:,.2f}  (assumptions, not measurements: run a smoke test and use --smoke)")
     return 0
 
 

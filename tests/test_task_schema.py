@@ -79,6 +79,21 @@ def test_pr_derived_needs_a_source():
         make(id="pr_999_x", category="pr_derived")
 
 
+def test_upstream_pins_match_the_vendored_bytes():
+    import hashlib
+
+    from harness.paths import REPO
+
+    pinned = [t for t in discover_tasks(TASKS) if t.source and t.source.upstream]
+    assert pinned, "expected at least one upstream task"
+    for task in pinned:
+        pin = task.source.upstream
+        assert task.source.commit == pin.subject
+        for relative, expected in pin.files.items():
+            digest = hashlib.sha256((REPO / pin.snapshot / relative).read_bytes()).hexdigest()
+            assert digest == expected, relative
+
+
 def test_review_defects_need_ordered_lines():
     with pytest.raises(ValidationError):
         make(

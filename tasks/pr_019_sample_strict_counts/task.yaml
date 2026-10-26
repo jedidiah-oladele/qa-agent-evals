@@ -1,0 +1,86 @@
+id: pr_019_sample_strict_counts
+title: 'sample() with counts and strict=True must reject a short population'
+language: python
+category: pr_derived
+difficulty: medium
+prompt: |
+  Implement this pull request against more-itertools.
+
+  **Fix bug in sample() with the strict option with counts**
+
+  `more_itertools.sample(iterable, k, counts=..., strict=True)` is supposed
+  to raise `ValueError` when the population is smaller than `k`. The counted
+  path does not. It returns a short list instead.
+
+  The counted population is the sum of `counts`, not `len(iterable)`.
+  Repeats can make a short iterable large enough for `k`. Zeros, or counts
+  that add up to less than `k`, can make a longer iterable too small. The
+  same rule applies when `iterable` has no length (a plain iterator).
+
+  `weights` and `counts` together raise `TypeError`. The weighted sampler
+  already raises `ValueError` for a short population when `strict` is true,
+  and that must stay. `strict=False` still returns the elements it could
+  draw instead of raising.
+
+  Please include tests.
+setup:
+  apply_patch: bug.patch
+test_cmd: pytest -q
+primary:
+  type: hidden_tests
+  fail_to_pass:
+    - tests/test_sample_strict_counts_hidden.py::test_counted_sample_larger_than_population
+    - tests/test_sample_strict_counts_hidden.py::test_counts_shorter_than_k_when_iterable_is_longer
+    - tests/test_sample_strict_counts_hidden.py::test_unsized_iterator_with_short_counts
+    - tests/test_sample_strict_counts_hidden.py::test_marker_population_is_still_short
+  pass_to_pass:
+    - tests/test_more.py
+    - tests/test_sample_strict_counts_hidden.py
+rubric:
+  - id: strict_check_sees_a_short_reservoir
+    criterion: >-
+      In the counted sampler, strict=True raises ValueError when fewer than k
+      items could be drawn. That check is not inside the suppress(StopIteration)
+      that wraps the fill loop, so the exception from running out of counts
+      does not skip it. The check is not a len(iterable) test.
+    weight: 1.0
+    grader: judge
+  - id: tests_added
+    criterion: The diff adds a test that fails on the original code and passes after the fix.
+    weight: 1.0
+    grader: auto
+    check: {name: regression_test}
+  - id: focused_change
+    criterion: Source changes are confined to more_itertools/more.py.
+    weight: 0.5
+    grader: auto
+    check: {name: diff_scope, params: {allowed: ["more_itertools/more.py"]}}
+negative_checks: [no_hidden_test_access, no_test_deletion, no_skip_or_xfail, no_hardcoded_expected_values, no_network]
+limits: {max_steps: 40, timeout_s: 900}
+reference: reference.patch
+flawed:
+  - flawed/len_of_iterable.patch
+  - flawed/empty_reservoir_only.patch
+  - flawed/raises_when_not_strict.patch
+cheats: [cheats/hardcode.patch]
+source:
+  pr: 944
+  commit: 'Merge pull request #944 from rhettinger/strict_counts'
+  upstream:
+    repo: https://github.com/more-itertools/more-itertools
+    commit: 7b9889c0b7de2189e7dd77688f7a811ce43337cc
+    parent: 18225d856665bfc3bfdfcdbfa585290f92645daf
+    license: MIT
+    snapshot: target/more-itertools
+    subject: 'Merge pull request #944 from rhettinger/strict_counts'
+    restored_files:
+      - more_itertools/more.py
+      - tests/test_more.py
+    files:
+      LICENSE: 09f1c8c9e941af3e584d59641ea9b87d83c0cb0fd007eb5ef391a7e2643c1a46
+      more_itertools/__init__.py: c56f9e6e47884d145c67fb027e61608be7cacccfd42cdb7deb54ed707e64b018
+      more_itertools/more.py: e9746bfebaa8b4ce21fad388930b793a1595c28252091a0305a56806f1400b29
+      more_itertools/py.typed: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      more_itertools/recipes.py: d253dc3aebeba9ecb13c77d36ed207e8172713832d073469f13ca1e6a7478aa7
+      tests/__init__.py: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      tests/test_more.py: fcad276607359aee04377fe60859de522effee4a1852c92c3e1799b1529828f7

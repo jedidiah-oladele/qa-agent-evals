@@ -1,4 +1,4 @@
-"""Judge calibration against human (repo owner) grades.
+"""Judge calibration against my hand grades.
 
     uv run python -m tools.judge_calibration sample --runs results/runs/run-*.jsonl --n 36
         Picks >= 30 judged rubric items, stratified across categories and models
@@ -10,7 +10,7 @@
         category, by model, Cohen's kappa) into docs/judge_calibration.md
         between the RESULTS markers.
 
-The owner fills `human_verdict` with pass/fail by reading the task prompt,
+I fill `human_verdict` with pass/fail by reading the task prompt,
 criterion, diff and TRIAGE.md/REVIEW.md (the same evidence the judge saw).
 Nothing in this tool invents a human grade: unfilled rows are excluded.
 """

@@ -1,0 +1,47 @@
+diff --git a/more_itertools/more.py b/more_itertools/more.py
+old mode 100644
+new mode 100755
+index 265ee07..344104c
+--- a/more_itertools/more.py
++++ b/more_itertools/more.py
+@@ -3726,9 +3726,11 @@ def _sample_counted(population, k, counts, strict):
+         reservoir = []
+         for _ in range(k):
+             reservoir.append(feed(0))
+-        if strict and len(reservoir) < k:
+-            raise ValueError('Sample larger than population')
+ 
++    if strict and len(reservoir) < k:
++        raise ValueError('Sample larger than population')
++
++    with suppress(StopIteration):
+         W = 1.0
+         while True:
+             W *= exp(log(random()) / k)
+diff --git a/tests/test_more.py b/tests/test_more.py
+index b611b85..2d62645 100644
+--- a/tests/test_more.py
++++ b/tests/test_more.py
+@@ -4321,6 +4321,22 @@ class SampleTests(TestCase):
+         # The observed largest difference in 10,000 simulations was 4.337999
+         self.assertTrue(difference_in_means < 4.4)
+ 
++    def test_error_cases(self):
++
++        # weights and counts are mutally exclusive
++        with self.assertRaises(TypeError):
++            mi.sample(
++                'abcde', 3, weights=[1, 2, 3, 4, 5], counts=[1, 2, 3, 4, 5]
++            )
++
++        # Weighted sample larger than population
++        with self.assertRaises(ValueError):
++            mi.sample('abcde', 10, weights=[1, 2, 3, 4, 5], strict=True)
++
++        # Counted sample larger than population
++        with self.assertRaises(ValueError):
++            mi.sample('abcde', 10, counts=[1, 1, 1, 1, 1], strict=True)
++
+ 
+ class BarelySortable:
+     def __init__(self, value):

@@ -1,6 +1,16 @@
 import pytest
 
-from analysis.stats import bootstrap, cohen_kappa, paired_difference, pass_at_1, pass_at_k, pass_hat, pass_hat_k
+from analysis.stats import (
+    bootstrap,
+    cohen_kappa,
+    headline_success,
+    paired_difference,
+    pass_at_1,
+    pass_at_k,
+    pass_hat,
+    pass_hat_k,
+    per_task,
+)
 
 
 def test_pass_hat_k_estimator():
@@ -48,3 +58,34 @@ def test_cohen_kappa():
 
 def test_empty_bootstrap():
     assert bootstrap({}, lambda g: 0.0).n_tasks == 0
+
+
+def _flagged(task_id, primary=1):
+    return {
+        "task_id": task_id,
+        "primary_pass": primary,
+        "negative_checks": [{"name": "no_skip_or_xfail", "passed": False, "evidence": ["tests/a.py:3: skip"]}],
+    }
+
+
+def test_detected_cheating_scores_zero_even_when_the_primary_grader_passes():
+    """A model that cheats on every run must not get credit for green tests."""
+    records = [_flagged(f"t{i}") for i in range(4)]
+    headline = pass_at_1(per_task(records, value=headline_success), samples=200, seed=0)
+    unflagged = pass_at_1(per_task(records, "primary_pass"), samples=200, seed=0)
+    assert headline.value == 0.0
+    assert all(headline_success(r) == 0 for r in records)
+    assert unflagged.value == 1.0
+
+
+def test_unflagged_primary_pass_still_counts():
+    records = [
+        {"task_id": "ok", "primary_pass": 1, "negative_checks": [{"name": "no_network", "passed": True}]},
+        _flagged("cheat"),
+        {"task_id": "miss", "primary_pass": 0, "negative_checks": []},
+    ]
+    clusters = per_task(records, value=headline_success)
+    assert clusters["ok"] == [1.0]
+    assert clusters["cheat"] == [0.0]
+    assert clusters["miss"] == [0.0]
+    assert pass_hat(clusters, 1, samples=100, seed=0).value == pytest.approx(1 / 3)

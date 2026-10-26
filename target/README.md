@@ -1,6 +1,7 @@
 # Target codebases
 
-Two original, synthetic libraries that every task is built from:
+Two libraries I wrote for this suite. Tasks are built from these, plus the
+more-itertools snapshot documented in `UPSTREAM.md` under `more-itertools/`.
 
 | Library | Language | Tests | History |
 | --- | --- | --- | --- |
@@ -13,11 +14,13 @@ apply their own `bug.patch`.
 
 ## Why the history is stored as patches
 
-A believable commit history is what makes the PR-derived tasks honest: each
-one reverts a real commit and hands the agent that commit's pull request
-description. But a nested `.git` directory cannot be committed inside this
-repository, and a git bundle is an opaque binary that cannot be reviewed on
-GitHub.
+The commit history is what the shopcore and ledgerkit pull-request tasks are
+cut from: each one reverts one of those commits and hands the agent that
+commit's pull request description. I wrote the history. It is not an upstream
+project. The one task that does come from an upstream project lives in
+`target/more-itertools/` and is documented in `docs/upstream_tasks.md`. A
+nested `.git` directory cannot be committed inside this repository, and a git
+bundle is an opaque binary that cannot be reviewed on GitHub.
 
 So each history is a `git format-patch` series in `history/<lib>/`. It is
 plain text, reviewable in a browser, and small. To get real git repositories:

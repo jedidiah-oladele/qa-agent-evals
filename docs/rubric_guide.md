@@ -22,7 +22,7 @@ reviewer (human or model) can grade the same way twice.
    hard-coding expected values, using the network, masking flaky tests with
    sleeps or retries.
 
-Rubric items together are worth 30% of the task score:
+Rubric items together are worth the rubric weight in `graders/scoring.py` (0.3). Auto checks and the LLM judge split that weight by item weight. The judge does not automatically decide 0.3 of the score. The README suite snapshot reports the actual range.
 
 ```
 task_score = max(0, 0.7 * primary_pass + 0.3 * rubric_score - 0.25 * failed_negative_checks)

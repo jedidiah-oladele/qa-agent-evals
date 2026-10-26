@@ -125,12 +125,51 @@ class Limits(_Strict):
     timeout_s: int = Field(default=900, ge=30)
 
 
-class Source(_Strict):
-    """Where a PR-derived task comes from in target/history/<library>."""
+class UpstreamPin(_Strict):
+    """A merged pull request in an upstream project, vendored at one commit.
 
-    library: Literal["shopcore", "ledgerkit"]
+    ``files`` maps snapshot-relative paths to the sha256 of the file at
+    ``commit``. ``restored_files`` are the ones ``reference.patch`` must
+    bring back to those bytes. ``subject`` is the commit's first line, and
+    it must match ``Source.commit``.
+    """
+
+    repo: str
+    commit: str
+    parent: str
+    license: str
+    snapshot: str
+    subject: str
+    restored_files: list[str] = Field(min_length=1)
+    files: dict[str, str]
+
+    @field_validator("commit", "parent")
+    @classmethod
+    def _full_sha(cls, value: str) -> str:
+        if not re.fullmatch(r"[0-9a-f]{40}", value):
+            raise ValueError("upstream pin needs a full 40-character commit sha")
+        return value
+
+
+class Source(_Strict):
+    """Where a PR-derived task comes from.
+
+    Synthetic tasks name a library in ``target/history``. Upstream tasks
+    leave ``library`` empty and pin a vendored snapshot instead.
+    """
+
+    library: Literal["shopcore", "ledgerkit"] | None = None
     pr: int
     commit: str
+    upstream: UpstreamPin | None = None
+
+    @model_validator(mode="after")
+    def _one_origin(self) -> Source:
+        if (self.library is None) == (self.upstream is None):
+            raise ValueError("source must name either a synthetic library or an upstream pin")
+        if self.upstream is not None and self.commit != self.upstream.subject:
+            raise ValueError("source.commit must be the upstream commit subject")
+        return self
 
 
 class Task(_Strict):
@@ -194,6 +233,12 @@ class Task(_Strict):
     # -- convenience ------------------------------------------------------
     @property
     def codebase(self) -> str:
+        if self.source is not None and self.source.upstream is not None:
+            snapshot = Path(self.source.upstream.snapshot)
+            try:
+                return str(snapshot.relative_to("target"))
+            except ValueError:
+                return snapshot.name
         return CODEBASES[self.language]
 
     @property

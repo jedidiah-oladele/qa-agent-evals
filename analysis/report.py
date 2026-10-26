@@ -22,7 +22,16 @@ from harness.config import run_config
 from harness.paths import REPO, RESULTS, RUNS
 
 from .failure_attribution import attribute
-from .stats import Estimate, cohen_kappa, mean_score, paired_difference, pass_at_1, pass_hat, per_task
+from .stats import (
+    Estimate,
+    cohen_kappa,
+    headline_success,
+    mean_score,
+    paired_difference,
+    pass_at_1,
+    pass_hat,
+    per_task,
+)
 
 CHARTS = RESULTS / "charts"
 CATEGORIES = ["bug_fix", "pr_derived", "write_tests", "flaky_test", "ci_triage", "code_review"]
@@ -86,8 +95,14 @@ class Analysis:
         runs_per_task = [len(v) for p in self.groups.values() for v in per_task(p).values()]
         self.k = min(runs_per_task) if runs_per_task else 0
 
-    def est(self, records: list[dict], field: str = "primary_pass") -> Estimate:
-        return pass_at_1(per_task(records, field), samples=self.samples, seed=self.seed)
+    def clusters(self, records: list[dict], field: str = "headline") -> dict[str, list[float]]:
+        """Task clusters for a rate. ``headline`` treats a cheat flag as a failure."""
+        if field == "headline":
+            return per_task(records, value=headline_success)
+        return per_task(records, field)
+
+    def est(self, records: list[dict], field: str = "headline") -> Estimate:
+        return pass_at_1(self.clusters(records, field), samples=self.samples, seed=self.seed)
 
     def overall(self, participant: str) -> dict:
         rs = self.groups[participant]
@@ -101,7 +116,8 @@ class Analysis:
             "runs": len(rs),
             "tasks": len({r["task_id"] for r in rs}),
             "pass_at_1": self.est(rs),
-            "pass_hat_k": pass_hat(per_task(rs), self.k, samples=self.samples, seed=self.seed) if self.k else None,
+            "primary_pass_at_1": self.est(rs, "primary_pass"),
+            "pass_hat_k": pass_hat(self.clusters(rs), self.k, samples=self.samples, seed=self.seed) if self.k else None,
             "task_score": mean_score(per_task(rs, "task_score"), samples=self.samples, seed=self.seed),
             "steps": _mean(r.get("steps") or 0 for r in rs),
             "cost": None if any(c is None for c in costs) else _mean(costs),
@@ -211,7 +227,7 @@ def charts(analysis: Analysis, dry: bool, out_dir: Path = CHARTS) -> list[str]:
         row = []
         for c in CATEGORIES:
             rs = [r for r in analysis.groups[p] if r["category"] == c]
-            row.append(_mean(float(r.get("primary_pass") or 0) for r in rs) if rs else float("nan"))
+            row.append(_mean(float(headline_success(r)) for r in rs) if rs else float("nan"))
         grid.append(row)
     from matplotlib.colors import LinearSegmentedColormap
 
@@ -399,6 +415,7 @@ def render(analysis: Analysis, dry: bool, chart_files: list[str], sources: list[
                 o["harness"],
                 str(o["runs"]),
                 o["pass_at_1"].fmt(),
+                o["primary_pass_at_1"].fmt(),
                 o["pass_hat_k"].fmt() if o["pass_hat_k"] else "-",
                 o["task_score"].fmt(pct=False),
                 f"{o['steps']:.1f}",
@@ -415,6 +432,7 @@ def render(analysis: Analysis, dry: bool, chart_files: list[str], sources: list[
                 "Harness",
                 "Runs",
                 "pass@1 [95% CI]",
+                "primary pass@1, flags ignored [95% CI]",
                 f"pass^{analysis.k} [95% CI]",
                 "Task score [95% CI]",
                 "Mean steps",
@@ -426,7 +444,18 @@ def render(analysis: Analysis, dry: bool, chart_files: list[str], sources: list[
             rows,
         )
     )
-    lines += ["", f"![pass@1 by model]({chart_files[0]})" if chart_files else "", ""]
+    lines += [
+        "",
+        "pass@1 counts a run as a success only when the primary grader passed and every negative "
+        "check passed. A run flagged for cheating or reward hacking is a failure, so a scripted "
+        "cheater cannot raise the headline rate by slipping past the tests. "
+        f"pass^{analysis.k} uses that same success bit. "
+        "The column \"primary pass@1, flags ignored\" is the primary grader alone. It is a secondary "
+        "number and it is not the headline.",
+        "",
+        f"![pass@1 by model]({chart_files[0]})" if chart_files else "",
+        "",
+    ]
 
     if len(analysis.participants) > 1:
         lines += [
@@ -440,8 +469,8 @@ def render(analysis: Analysis, dry: bool, chart_files: list[str], sources: list[
         for i, a in enumerate(ps):
             for b in ps[i + 1 :]:
                 d = paired_difference(
-                    per_task(analysis.groups[a]),
-                    per_task(analysis.groups[b]),
+                    analysis.clusters(analysis.groups[a]),
+                    analysis.clusters(analysis.groups[b]),
                     samples=analysis.samples,
                     seed=analysis.seed,
                 )
@@ -562,6 +591,7 @@ def write_csv(analysis: Analysis, path: Path) -> None:
                 "pass_at_1",
                 "pass_at_1_low",
                 "pass_at_1_high",
+                "primary_pass_at_1_flags_ignored",
                 f"pass_hat_{analysis.k}",
                 "mean_task_score",
                 "mean_steps",
@@ -586,6 +616,7 @@ def write_csv(analysis: Analysis, path: Path) -> None:
                     f"{o['pass_at_1'].value:.4f}",
                     f"{o['pass_at_1'].low:.4f}",
                     f"{o['pass_at_1'].high:.4f}",
+                    f"{o['primary_pass_at_1'].value:.4f}",
                     f"{ph:.4f}" if ph != "" else "",
                     f"{o['task_score'].value:.4f}",
                     f"{o['steps']:.2f}",
@@ -599,6 +630,7 @@ def write_csv(analysis: Analysis, path: Path) -> None:
                     if not sub:
                         continue
                     e = analysis.est(sub)
+                    ignored = analysis.est(sub, "primary_pass")
                     writer.writerow(
                         [
                             p,
@@ -611,6 +643,7 @@ def write_csv(analysis: Analysis, path: Path) -> None:
                             f"{e.value:.4f}",
                             f"{e.low:.4f}",
                             f"{e.high:.4f}",
+                            f"{ignored.value:.4f}",
                             "",
                             f"{_mean(float(r.get('task_score') or 0) for r in sub):.4f}",
                             f"{_mean(r.get('steps') or 0 for r in sub):.2f}",
