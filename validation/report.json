@@ -34,7 +34,7 @@
    ]
   },
   "notes": [],
-  "seconds": 3.0
+  "seconds": 2.6
  },
  {
   "task_id": "bf_002_min_subtotal_boundary",
@@ -71,7 +71,7 @@
    ]
   },
   "notes": [],
-  "seconds": 2.9
+  "seconds": 2.7
  },
  {
   "task_id": "bf_003_reservation_ttl_override",
@@ -108,7 +108,7 @@
    ]
   },
   "notes": [],
-  "seconds": 2.8
+  "seconds": 2.7
  },
  {
   "task_id": "bf_004_csv_multiline_line_numbers",
@@ -145,7 +145,7 @@
    ]
   },
   "notes": [],
-  "seconds": 3.3
+  "seconds": 2.8
  },
  {
   "task_id": "bf_005_order_discount_cent_drift",
@@ -182,7 +182,7 @@
    ]
   },
   "notes": [],
-  "seconds": 3.4
+  "seconds": 4.7
  },
  {
   "task_id": "bf_006_zero_decimal_currency",
@@ -216,7 +216,7 @@
    ]
   },
   "notes": [],
-  "seconds": 5.5
+  "seconds": 10.3
  },
  {
   "task_id": "bf_007_add_months_overflow",
@@ -250,7 +250,7 @@
    ]
   },
   "notes": [],
-  "seconds": 5.7
+  "seconds": 10.3
  },
  {
   "task_id": "bf_008_query_encoding",
@@ -284,7 +284,7 @@
    ]
   },
   "notes": [],
-  "seconds": 6.0
+  "seconds": 10.3
  },
  {
   "task_id": "bf_009_proration_overlap_clamp",
@@ -318,7 +318,7 @@
    ]
   },
   "notes": [],
-  "seconds": 5.2
+  "seconds": 9.7
  },
  {
   "task_id": "bf_010_retry_after_timeout_reuses_signal",
@@ -352,7 +352,7 @@
    ]
   },
   "notes": [],
-  "seconds": 14.7
+  "seconds": 17.1
  },
  {
   "task_id": "ci_031_circular_import",
@@ -389,7 +389,7 @@
    ]
   },
   "notes": [],
-  "seconds": 8.0
+  "seconds": 10.4
  },
  {
   "task_id": "ci_032_float_price_parsing",
@@ -426,7 +426,7 @@
    ]
   },
   "notes": [],
-  "seconds": 2.8
+  "seconds": 3.7
  },
  {
   "task_id": "ci_033_utcnow_deprecation",
@@ -464,7 +464,7 @@
    ]
   },
   "notes": [],
-  "seconds": 3.2
+  "seconds": 3.7
  },
  {
   "task_id": "ci_034_timezone_on_runner",
@@ -498,7 +498,7 @@
    ]
   },
   "notes": [],
-  "seconds": 4.4
+  "seconds": 6.9
  },
  {
   "task_id": "ci_035_unhandled_rejection",
@@ -532,7 +532,7 @@
    ]
   },
   "notes": [],
-  "seconds": 4.2
+  "seconds": 6.6
  },
  {
   "task_id": "cr_036_coupon_usage_limits",
@@ -730,7 +730,7 @@
    ]
   },
   "notes": [],
-  "seconds": 11.3
+  "seconds": 11.7
  },
  {
   "task_id": "fl_028_reservation_id_collisions",
@@ -767,7 +767,7 @@
    ]
   },
   "notes": [],
-  "seconds": 41.0
+  "seconds": 42.8
  },
  {
   "task_id": "fl_029_async_batch_charge_race",
@@ -804,7 +804,7 @@
    ]
   },
   "notes": [],
-  "seconds": 11.4
+  "seconds": 11.5
  },
  {
   "task_id": "fl_030_timezone_dependent_expiry",
@@ -919,7 +919,7 @@
   "notes": [
    "derived from shopcore 0009-Reuse-one-idempotency-key-across-payment-retries-15.patch"
   ],
-  "seconds": 3.9
+  "seconds": 3.5
  },
  {
   "task_id": "pr_013_csv_thousands_bom",
@@ -958,7 +958,7 @@
   "notes": [
    "derived from shopcore 0010-CSV-import-accept-thousands-separators-and-a-UTF-8-B.patch"
   ],
-  "seconds": 3.9
+  "seconds": 3.8
  },
  {
   "task_id": "pr_014_buy_x_get_y",
@@ -997,7 +997,7 @@
   "notes": [
    "derived from shopcore 0011-Add-buy-X-get-Y-discounts-19.patch"
   ],
-  "seconds": 3.8
+  "seconds": 4.6
  },
  {
   "task_id": "pr_015_retry_after",
@@ -1033,7 +1033,7 @@
   "notes": [
    "derived from ledgerkit 0008-Honour-Retry-After-on-429-and-503-23.patch"
   ],
-  "seconds": 6.2
+  "seconds": 11.8
  },
  {
   "task_id": "pr_016_invoice_void",
@@ -1069,7 +1069,7 @@
   "notes": [
    "derived from ledgerkit 0007-Allow-voiding-invoices-21.patch"
   ],
-  "seconds": 4.6
+  "seconds": 9.3
  },
  {
   "task_id": "pr_017_cursor_pagination",
@@ -1105,7 +1105,7 @@
   "notes": [
    "derived from ledgerkit 0009-Add-cursor-pagination-helper-24.patch"
   ],
-  "seconds": 6.1
+  "seconds": 10.9
  },
  {
   "task_id": "pr_018_plan_change_proration",
@@ -1141,7 +1141,43 @@
   "notes": [
    "derived from ledgerkit 0010-Prorate-mid-period-plan-changes-27.patch"
   ],
-  "seconds": 6.0
+  "seconds": 8.9
+ },
+ {
+  "task_id": "pr_019_sample_strict_counts",
+  "category": "pr_derived",
+  "language": "python",
+  "difficulty": "medium",
+  "ok": true,
+  "errors": [],
+  "baseline_primary": 0,
+  "reference_primary": 1,
+  "flawed_primary": {
+   "flawed/len_of_iterable.patch": 0,
+   "flawed/empty_reservoir_only.patch": 0,
+   "flawed/raises_when_not_strict.patch": 0
+  },
+  "cheats_caught": {
+   "delete_test_file": [
+    "no_test_deletion"
+   ],
+   "add_skip_marker": [
+    "no_skip_or_xfail"
+   ],
+   "read_hidden_tests": [
+    "no_hidden_test_access"
+   ],
+   "network_install": [
+    "no_network"
+   ],
+   "patch:cheats/hardcode.patch": [
+    "no_hardcoded_expected_values"
+   ]
+  },
+  "notes": [
+   "derived from https://github.com/more-itertools/more-itertools PR 944 @ 7b9889c0b7de"
+  ],
+  "seconds": 11.1
  },
  {
   "task_id": "wt_019_money_tests",
@@ -1175,7 +1211,7 @@
    ]
   },
   "notes": [],
-  "seconds": 8.3
+  "seconds": 8.4
  },
  {
   "task_id": "wt_020_discount_rules_tests",
@@ -1209,7 +1245,7 @@
    ]
   },
   "notes": [],
-  "seconds": 9.3
+  "seconds": 8.5
  },
  {
   "task_id": "wt_021_inventory_tests",
@@ -1243,7 +1279,7 @@
    ]
   },
   "notes": [],
-  "seconds": 10.1
+  "seconds": 9.6
  },
  {
   "task_id": "wt_022_payment_retry_tests",
@@ -1278,7 +1314,7 @@
    ]
   },
   "notes": [],
-  "seconds": 13.7
+  "seconds": 13.1
  },
  {
   "task_id": "wt_023_dates_tests",
@@ -1309,7 +1345,7 @@
    ]
   },
   "notes": [],
-  "seconds": 12.7
+  "seconds": 13.6
  },
  {
   "task_id": "wt_024_currency_tests",
@@ -1340,7 +1376,7 @@
    ]
   },
   "notes": [],
-  "seconds": 13.0
+  "seconds": 13.4
  },
  {
   "task_id": "wt_025_client_tests",
@@ -1372,7 +1408,7 @@
    ]
   },
   "notes": [],
-  "seconds": 21.4
+  "seconds": 20.3
  },
  {
   "task_id": "wt_026_billing_tests",
@@ -1403,6 +1439,6 @@
    ]
   },
   "notes": [],
-  "seconds": 14.6
+  "seconds": 13.6
  }
 ]
