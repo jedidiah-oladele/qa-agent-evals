@@ -109,7 +109,9 @@ def run_pytest(
 
 def _vitest_id(file_name: str, ancestors: list[str], title: str, workdir: str) -> str:
     relative = file_name
-    for prefix in (workdir.rstrip("/") + "/", "/work/"):
+    # vitest reports resolved paths: on macOS /var/folders/... comes back as /private/var/folders/...
+    resolved = str(Path(workdir).resolve())
+    for prefix in (workdir.rstrip("/") + "/", resolved.rstrip("/") + "/", "/work/"):
         if relative.startswith(prefix):
             relative = relative[len(prefix) :]
             break
